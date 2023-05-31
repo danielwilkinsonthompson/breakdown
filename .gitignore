@@ -55,5 +55,8 @@ dkms.conf
 # Binaries and test data
 *.bmp
 
-# VSCode stuff
+# VSCode
 *.vscode*
+
+# Build artefacts
+build
