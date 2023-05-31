@@ -10,12 +10,12 @@ references:
 - https://github.com/marc-q/libbmp/blob/master/libbmp.h
 - https://en.wikipedia.org/wiki/BMP_file_format
 -----------------------------------------------------------------------------*/
-#include <stdio.h>      // debugging, file read/write
-#include <stdlib.h>     // malloc/free
-#include <math.h>       // absolute for image dimensions
+#include <stdio.h>  // debugging, file read/write
+#include <stdlib.h> // malloc/free
+#include <math.h>   // absolute for image dimensions
 #include "bmp.h"
 
-#define DEBUG_BMP
+// #define DEBUG_BMP
 
 static uint16_t _bmp_read_uint16(FILE *image_file);
 static uint32_t _bmp_read_uint32(FILE *image_file);
@@ -24,21 +24,21 @@ static void _bmp_read_coreheader(FILE *image_file, bmp_header *header);
 static bmp_pixel _bmp_colour_lookup(bmp *image, uint32_t index);
 static const uint8_t bmp_file_header_signature[2] = BMP_FILE_HEADER_SIGNATURE;
 
-bmp* bmp_read(const char *filename)
+bmp *bmp_read(const char *filename)
 {
-    FILE* image_file;
-    bmp_file_header* image_file_header;
-    bmp* image;
+    FILE *image_file;
+    bmp_file_header *image_file_header;
+    bmp *image;
 
     // check inputs
     if (filename == NULL)
         return NULL;
 
     // allocate memory for image
-    image = (bmp*) malloc(sizeof(bmp));
+    image = (bmp *)malloc(sizeof(bmp));
     if (image == NULL)
         return NULL;
-    image->header = (bmp_header*) malloc(sizeof(bmp_header));
+    image->header = (bmp_header *)malloc(sizeof(bmp_header));
     if (image->header == NULL)
     {
         bmp_free(image);
@@ -46,7 +46,7 @@ bmp* bmp_read(const char *filename)
     }
 
     // extract file header
-    image_file_header = (bmp_file_header*) malloc(sizeof(bmp_file_header));
+    image_file_header = (bmp_file_header *)malloc(sizeof(bmp_file_header));
     if (image_file_header == NULL)
     {
         bmp_free(image);
@@ -70,28 +70,28 @@ bmp* bmp_read(const char *filename)
     }
     image->header->header_size = _bmp_read_uint32(image_file);
     switch (image->header->header_size)
-    {   
-        case BMP_BITMAPINFOHEADER_SIZE:
-            _bmp_read_infoheader(image_file, image->header);
-            break;
-        case BMP_BITMAPCOREHEADER_SIZE:
-            _bmp_read_coreheader(image_file, image->header);
-            break;
-        default:
-            bmp_free(image);
-            free(image_file_header);
-            fclose(image_file);
-            printf("Not a recognised bitmap format\r\n");
-            return NULL;
+    {
+    case BMP_BITMAPINFOHEADER_SIZE:
+        _bmp_read_infoheader(image_file, image->header);
+        break;
+    case BMP_BITMAPCOREHEADER_SIZE:
+        _bmp_read_coreheader(image_file, image->header);
+        break;
+    default:
+        bmp_free(image);
+        free(image_file_header);
+        fclose(image_file);
+        printf("Not a recognised bitmap format\r\n");
+        return NULL;
     }
-    
+
     if (image->header->compression >= BI_COMPRESSION_SUPPORT)
         printf("Unsupported compression type\r\n");
 
     // extract colour table, if any
     if (image->header->number_of_colours != BMP_ALL_COLOURS)
     {
-        image->colour_table = (bmp_colour*) malloc(sizeof(bmp_colour) * image->header->number_of_colours);
+        image->colour_table = (bmp_colour *)malloc(sizeof(bmp_colour) * image->header->number_of_colours);
         fread(image->colour_table, sizeof(bmp_colour) * image->header->number_of_colours, 1, image_file);
     }
     else
@@ -100,17 +100,17 @@ bmp* bmp_read(const char *filename)
     }
 
     // allocate memory for pixel data
-    image->pixel_data = (bmp_pixel**) malloc(abs(image->header->height) * sizeof(void*));
+    image->pixel_data = (bmp_pixel **)malloc(abs(image->header->height) * sizeof(void *));
     if (image->pixel_data == NULL)
     {
         bmp_free(image);
         free(image_file_header);
-        fclose(image_file);        
+        fclose(image_file);
         return NULL;
     }
-    for (int32_t row = 0;  row < abs(image->header->height);  row++)
+    for (int32_t row = 0; row < abs(image->header->height); row++)
     {
-        image->pixel_data[row] = (bmp_pixel*) malloc((image->header->width) * sizeof(bmp_pixel));
+        image->pixel_data[row] = (bmp_pixel *)malloc((image->header->width) * sizeof(bmp_pixel));
         if (image->pixel_data[row] == NULL)
         {
             bmp_free(image);
@@ -192,7 +192,7 @@ static uint32_t _bmp_read_uint32(FILE *image_file)
     return uint8_x4_uint32(buffer);
 }
 
-static void _bmp_read_infoheader(FILE* image_file, bmp_header* header)
+static void _bmp_read_infoheader(FILE *image_file, bmp_header *header)
 {
     header->width = _bmp_read_uint32(image_file);
     header->height = _bmp_read_uint32(image_file);
@@ -206,7 +206,7 @@ static void _bmp_read_infoheader(FILE* image_file, bmp_header* header)
     header->number_of_important_colours = _bmp_read_uint32(image_file);
 }
 
-static void _bmp_read_coreheader(FILE* image_file, bmp_header* header)
+static void _bmp_read_coreheader(FILE *image_file, bmp_header *header)
 {
     header->width = _bmp_read_uint16(image_file);
     header->height = _bmp_read_uint16(image_file);
@@ -218,7 +218,7 @@ static bmp_pixel _bmp_colour_lookup(bmp *image, uint32_t index)
 {
     bmp_pixel colour;
 
-    if bmp_invalid(image)
+    if bmp_invalid (image)
     {
         colour.red = 0;
         colour.green = 0;
@@ -231,24 +231,24 @@ static bmp_pixel _bmp_colour_lookup(bmp *image, uint32_t index)
     {
         switch (image->header->bitdepth)
         {
-            case 1:
-            case 4:
-            case 8:
-                // Unsupported, colour table needed
-                colour.red = 0;
-                colour.green = 0;
-                colour.blue = 0;
-            case 16:
-                colour.red = 0x000F & index;
-                colour.green = (0x00F0 & index) >> 4;
-                colour.blue = (0x0F00 & index) >> 8;
-            case 24:
-            case 32:
-                colour.red = (0xFF0000 & index) >> 16;
-                colour.green = (0x00FF00 & index) >> 8;
-                colour.blue = 0x0000FF & index;
-            default:
-                break;
+        case 1:
+        case 4:
+        case 8:
+            // Unsupported, colour table needed
+            colour.red = 0;
+            colour.green = 0;
+            colour.blue = 0;
+        case 16:
+            colour.red = 0x000F & index;
+            colour.green = (0x00F0 & index) >> 4;
+            colour.blue = (0x0F00 & index) >> 8;
+        case 24:
+        case 32:
+            colour.red = (0xFF0000 & index) >> 16;
+            colour.green = (0x00FF00 & index) >> 8;
+            colour.blue = 0x0000FF & index;
+        default:
+            break;
         }
     }
     else
@@ -270,14 +270,14 @@ void bmp_write(bmp *image, const char *filename)
     fclose(bmp_file);
 }
 
-void bmp_printf(const char* format, bmp *image)
+void bmp_printf(const char *format, bmp *image)
 {
     bmp_fprintf(stderr, format, image, 0, 0, 16, 16);
 }
 
-void bmp_fprintf(FILE* f, const char *format, bmp *image, uint32_t left_start, uint32_t bottom_start, uint32_t width, uint32_t height)
+void bmp_fprintf(FILE *f, const char *format, bmp *image, uint32_t left_start, uint32_t bottom_start, uint32_t width, uint32_t height)
 {
-    if bmp_invalid(image)
+    if bmp_invalid (image)
         return;
 
     fprintf(f, "    ");
@@ -310,7 +310,7 @@ void bmp_colour_printf(bmp_colour colour)
     fprintf(stderr, "%02x.%02x.%02x ", colour.red, colour.green, colour.blue);
 }
 
-void bmp_colour_table_printf(bmp_colour* colour_table, uint32_t number_of_colours)
+void bmp_colour_table_printf(bmp_colour *colour_table, uint32_t number_of_colours)
 {
     uint32_t total_rows = number_of_colours / 16;
     if ((colour_table == NULL) || (number_of_colours == 0))
@@ -334,7 +334,7 @@ void bmp_colour_table_printf(bmp_colour* colour_table, uint32_t number_of_colour
     }
 }
 
-void bmp_free(bmp* image)
+void bmp_free(bmp *image)
 {
     if (image->pixel_data != NULL)
     {
@@ -347,8 +347,9 @@ void bmp_free(bmp* image)
 }
 
 #ifdef DEBUG_BMP
-int main(int argc, char *argv[]) {
-    bmp* test;
+int main(int argc, char *argv[])
+{
+    bmp *test;
     if (argc > 1)
         test = bmp_read(argv[1]);
     else
