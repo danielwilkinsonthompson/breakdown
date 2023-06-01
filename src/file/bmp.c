@@ -13,6 +13,7 @@ references:
 #include <stdio.h>  // debugging, file read/write
 #include <stdlib.h> // malloc/free
 #include <math.h>   // absolute for image dimensions
+#include "array2d.h"
 #include "bmp.h"
 
 // #define DEBUG_BMP
@@ -100,24 +101,13 @@ bmp *bmp_read(const char *filename)
     }
 
     // allocate memory for pixel data
-    image->pixel_data = (bmp_pixel **)malloc(abs(image->header->height) * sizeof(void *));
+    image->pixel_data = (bmp_pixel **)malloc_2d(image->header->height, image->header->width, sizeof(bmp_pixel));
     if (image->pixel_data == NULL)
     {
         bmp_free(image);
         free(image_file_header);
         fclose(image_file);
         return NULL;
-    }
-    for (int32_t row = 0; row < abs(image->header->height); row++)
-    {
-        image->pixel_data[row] = (bmp_pixel *)malloc((image->header->width) * sizeof(bmp_pixel));
-        if (image->pixel_data[row] == NULL)
-        {
-            bmp_free(image);
-            free(image_file_header);
-            fclose(image_file);
-            return NULL;
-        }
     }
 
     // read pixel data from file
