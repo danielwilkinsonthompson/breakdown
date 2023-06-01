@@ -178,7 +178,7 @@ vector*   vector_linspace(VECT_PREC start, VECT_PREC stop, unsigned int pts);
 vector*   vector_function_evaluate(vector *a, VECT_PREC (*func)(VECT_PREC));
 vector*   vector_interpolate(vector *a, unsigned int multiplier);
 VECT_PREC vector_find_shift(vector *v, vector *u);
-vector*   vector_add_constant(vector *v, unsi)
+// vector*   vector_add_constant(vector *v, unsi)
 
 /*
 trim library to only those functions required for hymap-c
@@ -269,6 +269,6 @@ vector* _vector_add (vector *a, vector *b);
 vector* _vector_sub (vector *a, vector *b);
 vector* _vector_mul (vector *a, vector *b);
 vector* _vector_div (vector *a, vector *b);
-vector* _vector_divide_constant(vector *a, )
+// vector* _vector_divide_constant(vector *a, )
 
 #endif
