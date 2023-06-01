@@ -1,3 +1,15 @@
+/*=============================================================================
+                                  bmp_test.c
+-------------------------------------------------------------------------------
+simple test of breakdown/file/bmp using MiniFB
+
+© Daniel Wilkinson-Thompson 2023
+daniel@wilkinson-thompson.com
+references:
+ - https://github.com/danielwilkinsonthompson/breakdown
+ - https://github.com/emoon/minifb
+-----------------------------------------------------------------------------*/
+
 #include "MiniFB.h"
 #include "bmp.h"
 #include <stdio.h>
