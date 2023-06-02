@@ -8,6 +8,11 @@ daniel@wilkinson-thompson.com
 references:
  - https://github.com/danielwilkinsonthompson/breakdown
  - https://github.com/emoon/minifb
+
+TODO:
+    - Pan image
+    - Inspect pixel value
+    - Zoom
 -----------------------------------------------------------------------------*/
 
 #include "MiniFB.h"

@@ -8,7 +8,7 @@ daniel@wilkinson-thompson.com
 TODO:
   - Move function documentation to csv.h
 BUG:
-  - If last line of file is not empty \n, last row of csv is missed
+  - If last line of file is not a blank \n, last row of csv is missed
 -----------------------------------------------------------------------------*/
 #ifndef __csv_h
 #define __csv_h
