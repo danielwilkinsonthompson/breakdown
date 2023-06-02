@@ -20,10 +20,14 @@ add_subdirectory(lib/minifb lib)
 # breakdown
 # -----------------------------------------------------------------------------
 set(breakdown_src
+    include/array2d.h    
     include/bmp.h
-    include/array2d.h
-    src/file/bmp.c
+    include/csv.h
+    include/vector.h
     src/data/array2d.c
+    src/file/bmp.c
+    src/file/csv.c
+    src/analysis/vector.c
 )
 add_library(breakdown STATIC ${breakdown_src})
 target_include_directories(breakdown PUBLIC "${CMAKE_INSTALL_INCLUDEDIR}")
@@ -39,4 +43,9 @@ if(BREAKDOWN_BUILD_TESTS)
     add_executable(bmp test/file/bmp/bmp_test.c)
     target_link_libraries(bmp PRIVATE breakdown)
     install(TARGETS bmp EXPORT bmp RUNTIME DESTINATION bin)
+
+    add_executable(vector test/analysis/vector_test.c)
+    target_link_libraries(vector PRIVATE breakdown)
+    install(TARGETS vector EXPORT vector RUNTIME DESTINATION bin)
+
 endif()

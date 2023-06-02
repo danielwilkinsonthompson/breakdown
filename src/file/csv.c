@@ -16,7 +16,7 @@ daniel@wilkinson-thompson.com
 /*----------------------------------------------------------------------------
                               private prototypes
 -----------------------------------------------------------------------------*/
-int _file_dims(char *filename, unsigned int *col, unsigned int *row);
+int _file_dims(const char *filename, unsigned int *col, unsigned int *row);
 
 /*----------------------------------------------------------------------------
   init
@@ -81,7 +81,7 @@ void csv_free(csv *c)
     -
     d        :  struct containing csv data
 -----------------------------------------------------------------------------*/
-csv *csv_read(char *filename)
+csv *csv_read(const char *filename)
 {
   csv *d;
   FILE *f;
@@ -182,7 +182,7 @@ csv *csv_read(char *filename)
     c        :  csv struct to print
     filename :  name of output file
 -----------------------------------------------------------------------------*/
-int csv_write(csv *c, char *filename)
+int csv_write(csv *c, const char *filename)
 {
   FILE *f;
 
@@ -254,7 +254,7 @@ void csv_fprintf(csv *c, FILE *f, const char *format)
       -1 = an input pointer was NULL
       -2 = could not open file
 -----------------------------------------------------------------------------*/
-int _file_dims(char *filename, unsigned int *row, unsigned int *col)
+int _file_dims(const char *filename, unsigned int *row, unsigned int *col)
 {
   char c;
   FILE *f;
