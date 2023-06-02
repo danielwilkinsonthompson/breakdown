@@ -1,9 +1,9 @@
 /*=============================================================================
                                     vector.c
 -------------------------------------------------------------------------------
-numerical analysis using 1-d arrays
+numpy-style numerical analysis with 1d arrays
 
-© Daniel Wilkinson-Thompson 2015
+© Daniel Wilkinson-Thompson 2023
 daniel@wilkinson-thompson.com
 -----------------------------------------------------------------------------*/
 #include <stdlib.h> // malloc/free
@@ -34,7 +34,7 @@ daniel@wilkinson-thompson.com
 /*----------------------------------------------------------------------------
   _private prototypes
 -----------------------------------------------------------------------------*/
-void _vect_void_vargs(void (*func)(vect *), unsigned char argc, ...);
+void _vect_void_vargs(void (*func)(vect *), int argc, ...);
 vect *_vect_gen_0param(vdata (*func)(void), vindex l);
 vect *_vect_gen_1param(vdata (*func)(vdata), vindex l, vdata p);
 vect *_vect_for_0param(vdata (*func)(vdata), vect *v);
@@ -1206,7 +1206,7 @@ vdata _rnd(void)
     func :  function to run on each vect - must have void return type
     argc :  vect count
 -----------------------------------------------------------------------------*/
-void _vect_void_vargs(void (*func)(vect *), unsigned char argc, ...)
+void _vect_void_vargs(void (*func)(vect *), int argc, ...)
 {
   vect *v;
   va_list argv;
