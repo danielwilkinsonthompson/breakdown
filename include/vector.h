@@ -1,274 +1,230 @@
 /*=============================================================================
                                     vector.h
 -------------------------------------------------------------------------------
-vector description
+numpy-style numerical analysis using 1d arrays
 
+© Daniel Wilkinson-Thompson 2023
 daniel@wilkinson-thompson.com
-2014-07-18
 -----------------------------------------------------------------------------*/
-#ifndef __vector_h
-#define __vector_h
-
-
-/*----------------------------------------------------------------------------
-                                   includes
- ----------------------------------------------------------------------------*/
-#include <stdio.h>   // debugging
-
+#ifndef __vect_h
+#define __vect_h
+#include <stdio.h>  // debugging
+#include <stdint.h> // types
+#include <stdarg.h> // variable argument functions
 
 /*----------------------------------------------------------------------------
-                                   switches
- ----------------------------------------------------------------------------*/
-#define DEBUG
-#define VARGS
-//#define TERSE
-
-
-/*----------------------------------------------------------------------------
-                              conditional includes
- ----------------------------------------------------------------------------*/
-#ifdef VARGS
-#include <stdarg.h>  // variable argument functions
-#endif
-
+  typdefs
+-----------------------------------------------------------------------------*/
+typedef double vdata;        // vect precision
+typedef unsigned int vindex; // vect size
+typedef struct vect_t
+{ // vect-type
+  vdata *data;
+  vindex length;
+} vect;
 
 /*----------------------------------------------------------------------------
-                           constants, typdefs & enums
- ----------------------------------------------------------------------------*/
-#ifndef PRECISION  // use '-DPRECISOIN=double' compiler flag to override
-#define PRECISION float
-#endif
-#ifndef VECT_PREC  // use '-DVECT_PREC=double' compiler flag to override
-#define VECT_PREC PRECISION
-#endif
-
-// vector data-type (configurable precision + vector length)
-typedef struct vector_t {
-  VECT_PREC   *data;  // configurable VECT_PREC data
-  unsigned int length;
-} vector;
-
-
-/*----------------------------------------------------------------------------
-                             function macros
- ----------------------------------------------------------------------------*/
-/*--- debugging support ---*/
-#ifdef  DEBUG
+  function macros
+-----------------------------------------------------------------------------*/
+// debugging
 #ifndef DEBUG_FORMAT
-#define DEBUG_FORMAT "%2.3f"
+#define DEBUG_FORMAT "%2.3f\n"
 #endif
-#define vector_debug_value(v) fprintf(stdout, #v " = \n"); vector_fprintf(v, stdout, DEBUG_FORMAT); fprintf(stdout, "\n\n");
-#define vector_debug_command(v) fprintf(stdout, ">> " #v "\n\n"); v;
+#define vect_debug_value(v)              \
+  fprintf(stderr, #v " = \n");           \
+  vect_fprintf(stderr, DEBUG_FORMAT, v); \
+  fprintf(stderr, "\n\n");
+#define vect_debug_command(v)       \
+  fprintf(stderr, ">> " #v "\n\n"); \
+  v;
+
+// varg functions
+#define _nobjs(...) (sizeof((vect *[]){__VA_ARGS__}) / sizeof(vect *))
+#define vect_free(...) _vect_void_vargs(_vect_free, _nobjs(__VA_ARGS__), __VA_ARGS__)
+
+// validation
+#define vect_invalid(v) ((v == NULL) || (v->data == NULL) || (v->length == 0))
+
+// type-independent min/max
+#ifndef min
+#define min(a, b) (((a) < (b)) ? (a) : (b))
 #endif
-
-// check vector
-#define vector_null(v) ((v == NULL) || (v->data == NULL) || (v->length == 0))
-
-/*--- variable argument function support ---*/
-#ifdef  VARGS
-// variable argument helpers
-#define _nargs(...) (sizeof((VECT_PREC[]){ __VA_ARGS__ })/sizeof(VECT_PREC))
-#define _nobjs(...) (sizeof((vector*[]){ __VA_ARGS__ })/sizeof(vector*))
-// variable argument function macros
-#define vector_define(...)  _vector_def_vargs (_nargs( __VA_ARGS__ ), __VA_ARGS__ )
-#define vector_free(...) _vector_void_vargs(_vector_free, _nobjs( __VA_ARGS__ ), __VA_ARGS__ )
-#define vector_add(...)  _vector_casc_vargs(_vector_add, _nobjs( __VA_ARGS__ ), __VA_ARGS__ )
-#define vector_subtract(...)  _vector_casc_vargs(_vector_sub, _nobjs( __VA_ARGS__ ), __VA_ARGS__ )
-#define vector_multiply(...)  _vector_casc_vargs(_vector_mul, _nobjs( __VA_ARGS__ ), __VA_ARGS__ )
-#define vector_divide(...)  _vector_casc_vargs(_vector_div, _nobjs( __VA_ARGS__ ), __VA_ARGS__ )
-
-
-#else
-// non-variable argument function macros
-#define vector_free(v)      _vector_free(v);
-#define vector_add(v)       _vector_add(v);
-#define vector_subtract(v)  _vector_sub(v);
-#define vector_multiply(v)  _vector_mul(v);
-#define vector_divide(v)    _vector_div(v);
+#ifndef max
+#define max(a, b) (((a) > (b)) ? (a) : (b))
 #endif
-
-/*--- terse function aliases ---*/
-#ifdef TERSE
-// debug
-#define vdbv(v)  vector_debug_value(v)
-#define vdbc(v)  vector_debug_command(v)
-
-// standard object functions
-#define vini(v)  vector_initialise(v)
-#define vdef(v)  vector_define(v)
-#define vfre(v)  vector_free(v)
-#define vspf(v)  vector_sprintf(v)
-#define vfpf(v)  vector_fprintf(v)
-#define vcpy(v)  vector_copy(v)
-
-// quick define
-#define vzer(v)  vector_zeros(v)
-#define vone(v)  vector_ones(v)
-#define vcon(v)  vector_constant(v)
-#define vlin(v)  vector_linspace(v)
-#define vlog(v)  vector_logspace(v)
-
-// simple vector mathematics
-#define vmin(v)  vector_minimum(v)
-#define vmax(v)  vector_maximum(v)
-#define vsum(v)  vector_sum(v)
-#define vadd(v)  vector_add(v)
-#define vsub(v)  vector_subtract(v)
-#define vmul(v)  vector_multiply(v)
-#define vdiv(v)  vector_divide(v)
-#define vadc(v)  vector_add_constant(v)
-#define vsuc(v)  vector_subtract_constand(v)
-#define vmuc(v)  vector_multiply_constant(v)
-#define vdic(v)  vector_divide_constant(v)
-
-// data manipulation
-#define vcat(v)  vector_concatenate(v)
-#define vdec(v)  vector_decimate(v)
-#define vinp(v)  vector_interpolate(v)
-#define vres(v)  vector_resample(v)
-#define vsat(v)  vector_saturate(v)
-#define vset(v)  vector_subset(v)
-#define vrss(v)  vector_replace_subset(v)
-
-// data analysis
-#define vdif(v)  vector_difference(v)
-#define vfit(v)  vector_fit_function(v)
-#define vint(v)  vector_integrate(v)
-#define vmam(v)  vector_maxima
-#define vmim(v)  vector_minima
-#define vpek(v)  vector_peaks
-#define vser(v)  vector_search(v)
-
-// signal processing
-#define vspm(v)  vector_spectrum(v)
-#define vfft(v)  vector_fft(v)
-#define vift(v)  vector_ifft(v)
-#define vthd(v)  vector_thd(v)
-#define vxco(v)  vector_cross_correlation(v)
-#define vaco(v)  vector_autocorrelation(v)
-
-// glue functions
-#define vfun(v)  vector_function_evaluate(v)
-
-#endif
-
 
 /*----------------------------------------------------------------------------
-                              standard functions
- ----------------------------------------------------------------------------*/
-vector* vector_initialise(unsigned int length);         // create empty vector
-void  vector_sprintf(vector *a, char *str, const char *format); // string
-void  vector_fprintf(vector *a, FILE *f  , const char *format); // file
+  prototypes
+-----------------------------------------------------------------------------*/
+// standard
+vect *vect_init(vindex length);
+void vect_printf(const char *fmt, vect *v);
+void vect_fprintf(FILE *f, const char *fmt, vect *v);
+// void vect_free(...) - vargs macro
 
+// file io
+vect **vect_read_csv(const char *filename, uint32_t *cols);
+void vect_write_csv(vect **v, const char *filename, uint32_t cols);
 
-/*----------------------------------------------------------------------------
-                           vector-specific functions
- ----------------------------------------------------------------------------*/
-VECT_PREC vector_maximum(vector *a, unsigned int *ind);
-VECT_PREC vector_minimum(vector *a, unsigned int *ind);
-VECT_PREC vector_sum(vector *v);
-//vector*   vector_add(vector *v, vector *u);
+// generation
+vect *vect_zeros(vindex l);
+vect *vect_ones(vindex l);
+vect *vect_rand(vindex l);
+vect *vect_const(vindex l, vdata c);
+vect *vect_linspace(vdata a, vdata b, vindex n);
+vect *vect_logspace(vdata a, vdata b, vindex n);
+vect *vect_copy(vect *v);
 
+// logarithmic
+vect *vect_exp(vect *v);
+vect *vect_exp2(vect *v);
+vect *vect_exp10(vect *v);
+vect *vect_log(vect *v);
+vect *vect_log2(vect *v);
+vect *vect_log10(vect *v);
 
+// power
+vect *vect_pow(vect *v, vect *u);
+vect *vect_powc(vect *v, vdata p);
+vect *vect_cpow(vdata c, vect *v);
+vect *vect_hypot(vect *v, vect *u);
+vect *vect_sqrt(vect *v);
+vect *vect_cbrt(vect *v);
 
-vector*   vector_cross_correlation(vector *a, vector *b);
-vector*   vector_saturate(vector *a, VECT_PREC min, VECT_PREC max);
-vector*   vector_decimate(vector *a, unsigned int divisor);
-vector*   vector_linspace(VECT_PREC start, VECT_PREC stop, unsigned int pts);
-vector*   vector_function_evaluate(vector *a, VECT_PREC (*func)(VECT_PREC));
-vector*   vector_interpolate(vector *a, unsigned int multiplier);
-VECT_PREC vector_find_shift(vector *v, vector *u);
-// vector*   vector_add_constant(vector *v, unsi)
+// algebraic
+vect *vect_abs(vect *v);
+vect *vect_mul(vect *v, vect *u);
+vect *vect_div(vect *v, vect *u);
+vect *vect_add(vect *v, vect *u);
+vect *vect_sub(vect *v, vect *u);
+vect *vect_addc(vect *v, vdata c);
+vect *vect_subc(vect *v, vdata c);
+vect *vect_divc(vect *v, vdata c);
+vect *vect_mulc(vect *v, vdata c);
 
+// statistics
+vdata vect_sum(vect *v);
+vect *vect_cumsum(vect *v);
+vdata vect_prod(vect *v);
+// vdata vect_cumprod(vect *v);
+vdata vect_norm(vect *v);
+vdata vect_mean(vect *v);
+vdata vect_std(vect *v);
+vdata vect_var(vect *v);
+vdata vect_max(vect *v, vindex *ind);
+vdata vect_min(vect *v, vindex *ind);
+vdata vect_range(vect *v);
+
+// rounding
+vect *vect_round(vect *v);
+vect *vect_ceil(vect *v);
+vect *vect_floor(vect *v);
+vect *vect_rem(vect *v, vdata c);
+vect *vect_mod(vect *v, vdata c);
+
+// trigonometry
+vect *vect_sin(vect *v);
+vect *vect_cos(vect *v);
+vect *vect_tan(vect *v);
+vect *vect_asin(vect *v);
+vect *vect_acos(vect *v);
+vect *vect_atan(vect *v);
+vect *vect_sinh(vect *v);
+vect *vect_cosh(vect *v);
+vect *vect_tanh(vect *v);
+vect *vect_atan2(vect *v, vect *u);
+
+// square
+// tri
+// chirp
+
+// error/gamma functions
+vect *vect_erf(vect *v);
+vect *vect_erfc(vect *v);
+vect *vect_lgamma(vect *v);
+vect *vect_tgamma(vect *v);
+
+// classification
+vect *vect_isinf(vect *v);
+vect *vect_isnan(vect *v);
+vect *vect_sign(vect *v);
+// vect* vect_find(vect *v);
+
+// resampling
+vect *vect_interp(vect *v, vindex i);
+vect *vect_decimate(vect *v, vindex m);
+vect *vect_resample(vect *v, vindex i, vindex m);
+
+// calculus
+vect *vect_diff(vect *v);
+// vect* vect_trapz(vect *v);
+//
+
+//
+vect *vect_flip(vect *v);
+// shift
+// sort
+
+// filtering
+vect *vect_smooth(vect *v, vindex n);
+// vect* vect_bessel2(vect *v, vindex n);
+// vect* vect_bessel4(vect *v, vindex n);
+
+// sets
+vect *vect_subset(vect *v, vindex l, vindex u);
+vect *vect_concat(vect *v, vect *u);
+vect *vect_insert(vect *v, vect *u, vindex s);
+// split
+// window
+
+// analysis
+vect *vect_xcorr(vect *v, vect *u, vindex s);
+vdata vect_find_shift(vect *v, vect *u, vindex r, unsigned int i);
+vdata vect_corr(vect *v, vect *u);
+vindex vect_trigger(vect *v, vdata t, int s);
+vindex vect_peaks(vect *v, vdata t, vindex n, vect *m, vindex *i);
+// vindex vect_search();
+// vindex vect_bisect();
+// vindex vect_newton();
+
+// dsp
+// conv
+// deconv
+
+// vect* vect_ets_fold(vect *v);
+//
+
+// frequency domain
 /*
-trim library to only those functions required for hymap-c
+thd
+snr (std/mean)
+fft
+ifft
+spect
+pwelch
+fwhm
+ */
+
+/*----------------------------------------------------------------------------
+                                  status
+------------------------------------------------------------------------------
 
 
-vector_find_shift
-  vector_null
-  vector_difference
-  vector_interpolate
-  vector_cross_correlation
-  vector_maximum
-  vector_free
-
-** no need for overloaded functions **
-
-
-
-initialise  - @implemented @tested
-free        - @implemented
-copy        - @implemented
-fprintf     - @implemented @tested
-
-zeros       - @implemented
-multiply    - @implemented
-divide_constant - @implemented
-
-sum         - @implemented
-absolute    - @implemented
-maximum     - @implemented
-subset      - @implemented
-interpolate - @implemented
-cross_correlation - @implemented
-find_shift -- @implemented
-
-difference  - @implemented
-
----
-
-add_const   - @implemented
-sub_const   - @implemented
-mul_const   - @implemented
-div_const   - @implemented
-
+integral
 acorr
 corr
+bessel
+search
 
-logspace
+fit
 
-zeros
-ones
-const -- name??
-search // stdlib.h : void *bsearch(const void *key, const void *base, size_t nitems, size_t size, int (*compar)(const void *, const void *));
-peaks
-maxima
-minima
-ffit
-thd
-fft
-spect
-subset
-concat
-resample
-norm
-std
-rand
-copy
-smooth
-log
-log10
+cumprod
+delay
+trapz
+bisect
+find
+sort
 
 */
-
-
-/*----------------------------------------------------------------------------
-                              private functions
- ----------------------------------------------------------------------------*/
-// standard
-#ifdef VARGS
-void  _vector_free_vargs(unsigned char argc, ... );
-vector* _vector_def_vargs (unsigned char argc, ... );
-void  _vector_void_vargs(void  (*func)(vector*), unsigned char argc, ... );
-vector* _vector_casc_vargs(vector* (*func)(vector*, vector*), unsigned char argc, ... );
-#endif
-
-// vector-specific
-void    _vector_free(vector *a);
-vector* _vector_add (vector *a, vector *b);
-vector* _vector_sub (vector *a, vector *b);
-vector* _vector_mul (vector *a, vector *b);
-vector* _vector_div (vector *a, vector *b);
-// vector* _vector_divide_constant(vector *a, )
 
 #endif
