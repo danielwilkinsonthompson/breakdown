@@ -1,10 +1,39 @@
 /*=============================================================================
                                     vector.h
 -------------------------------------------------------------------------------
-numpy-style numerical analysis using 1d arrays
+numpy-style numerical analysis with 1d arrays
 
 © Daniel Wilkinson-Thompson 2023
 daniel@wilkinson-thompson.com
+TODO
+  - move function descriptions to header file
+  - complete the following functions
+  - integral
+  - acorr
+  - corr
+  - bessel
+  - search
+  - fit
+  - cumprod
+  - delay
+  - trapz
+  - bisect
+  - newton-raphson
+  - find
+  - sort
+  - rise_time
+  - settling_time
+  - thd
+  - snr (std/mean)
+  - fft
+  - ifft
+  - spect
+  - pwelch
+  - fwhm
+  - convolve
+  - deconvolve
+  - shift
+  -
 -----------------------------------------------------------------------------*/
 #ifndef __vect_h
 #define __vect_h
@@ -17,8 +46,8 @@ daniel@wilkinson-thompson.com
 -----------------------------------------------------------------------------*/
 typedef double vdata;        // vect precision
 typedef unsigned int vindex; // vect size
-typedef struct vect_t
-{ // vect-type
+typedef struct vect_t        // vect-type
+{
   vdata *data;
   vindex length;
 } vect;
@@ -192,39 +221,5 @@ vindex vect_peaks(vect *v, vdata t, vindex n, vect *m, vindex *i);
 // deconv
 
 // vect* vect_ets_fold(vect *v);
-//
-
-// frequency domain
-/*
-thd
-snr (std/mean)
-fft
-ifft
-spect
-pwelch
-fwhm
- */
-
-/*----------------------------------------------------------------------------
-                                  status
-------------------------------------------------------------------------------
-
-
-integral
-acorr
-corr
-bessel
-search
-
-fit
-
-cumprod
-delay
-trapz
-bisect
-find
-sort
-
-*/
 
 #endif

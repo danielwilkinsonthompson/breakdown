@@ -1,10 +1,13 @@
 /*=============================================================================
                                 vector_test.c
 -------------------------------------------------------------------------------
-simple test of breakdown/analysis/vector
+simple test of analysis/vector
 
 © Daniel Wilkinson-Thompson 2023
 daniel@wilkinson-thompson.com
+
+TODO:
+    - Comment code
 -----------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>

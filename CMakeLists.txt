@@ -1,5 +1,5 @@
 # =============================================================================
-#                              breakdown cmake
+#                                   breakdown
 # -----------------------------------------------------------------------------
 # build the breakdown library
 #
@@ -39,13 +39,17 @@ install(FILES ${HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 # -----------------------------------------------------------------------------
 # test
 # -----------------------------------------------------------------------------
-if(BREAKDOWN_BUILD_TESTS)
-    add_executable(bmp test/file/bmp/bmp_test.c)
-    target_link_libraries(bmp PRIVATE breakdown)
-    install(TARGETS bmp EXPORT bmp RUNTIME DESTINATION bin)
+add_executable(bmp_test test/file/bmp/bmp_test.c)
+target_link_libraries(bmp_test PRIVATE breakdown)
+install(TARGETS bmp_test EXPORT bmp_test RUNTIME DESTINATION bin)
+enable_testing()
+add_test(NAME BMP_NO_FILE COMMAND ./bmp_test)
+set_tests_properties(BMP_NO_FILE PROPERTIES PASS_REGULAR_EXPRESSION "No file specified")
+add_test(NAME BMP_LENA COMMAND ./bmp_test ../test/file/bmp/lena.bmp)
 
-    add_executable(vector test/analysis/vector_test.c)
-    target_link_libraries(vector PRIVATE breakdown)
-    install(TARGETS vector EXPORT vector RUNTIME DESTINATION bin)
-
-endif()
+add_executable(vector_test test/analysis/vector_test.c)
+target_link_libraries(vector_test PRIVATE breakdown)
+install(TARGETS vector_test EXPORT vector_test RUNTIME DESTINATION bin)
+add_test(NAME VECTOR_NO_FILE COMMAND ./vector_test)
+set_tests_properties(VECTOR_NO_FILE PROPERTIES PASS_REGULAR_EXPRESSION "No file specified")
+add_test(NAME VECTOR_TEST_CSV COMMAND ./vector_test ../test/analysis/test_vect.csv)
