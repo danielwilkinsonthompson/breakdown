@@ -19,6 +19,7 @@ int main(int argc, char *argv[])
 {
     vect **data;
     uint32_t cols;
+    vect *time;
     vect *voltage;
     vdata av;
 
@@ -35,7 +36,10 @@ int main(int argc, char *argv[])
     }
 
     if (cols >= 2)
+    {
+        time = data[0];
         voltage = data[1];
+    }
 
     if (vect_invalid(voltage))
     {
@@ -43,7 +47,12 @@ int main(int argc, char *argv[])
         return -2;
     }
 
+    vect_debug_value(time);
     vect_debug_value(voltage);
     vect_debug_command(av = vect_mean(voltage));
     fprintf(stdout, "%0.5e\r\n\n\n", av);
+
+    data[0] = time;
+    data[1] = voltage;
+    vect_write_csv(data, "test_vect_writeback.csv\r\n", 2);
 }
