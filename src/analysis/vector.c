@@ -256,7 +256,7 @@ vect **vect_read_csv(const char *filename, uint32_t *cols)
 void vect_write_csv(vect **v, const char *filename, uint32_t cols)
 {
   csv *c;
-  csvindex lines_written;
+  int success;
 
   if vect_invalid (v[0])
     return;
@@ -270,14 +270,17 @@ void vect_write_csv(vect **v, const char *filename, uint32_t cols)
   {
     for (csvindex col = 0; col < c->col; col++)
     {
+      printf("row: %d col: %d\r\n", row, col);
       c->data[row][col] = (csvdata)v[col]->data[row];
     }
   }
 
   // write data to file
-  lines_written = csv_write(c, filename);
-  if (lines_written != v[0]->length)
-    fprintf(stderr, "Failed to write all data to %s", filename);
+  success = csv_write(c, filename);
+  if (success != 1)
+  {
+    fprintf(stderr, "Failed to write all data to %s\r\n", filename);
+  }
 }
 
 /*----------------------------------------------------------------------------
