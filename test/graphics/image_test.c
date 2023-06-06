@@ -1,7 +1,7 @@
 /*=============================================================================
-                                  bmp_test.c
+                                  image_test.c
 -------------------------------------------------------------------------------
-simple test of breakdown/file/bmp using MiniFB
+simple test of graphics/image using MiniFB
 
 © Daniel Wilkinson-Thompson 2023
 daniel@wilkinson-thompson.com
@@ -14,37 +14,19 @@ TODO:
     - Inspect pixel value
     - Zoom
 -----------------------------------------------------------------------------*/
-
-#include "MiniFB.h"
-#include "bmp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include "MiniFB.h"
+#include "image.h"
 
 static uint32_t *g_buffer = 0x0;
-
-void mouse_scroll(struct mfb_window *window, mfb_key_mod mod, float deltaX, float deltaY)
-{
-    // TODO: pan image
-    fprintf(stderr, "mouse_scroll > deltaX: %f\tdeltaY: %f\r\n", deltaX, deltaY);
-}
-
-void mouse_button(struct mfb_window *window, mfb_mouse_button button, mfb_key_mod mod, bool isPressed)
-{
-    // TODO: zoom image at mouse click
-    if (isPressed)
-    {
-        int mouse_x = mfb_get_mouse_x(window);
-        int mouse_y = mfb_get_mouse_y(window);
-        fprintf(stderr, "mouse_btn > button: %d\tmod_key: %s\tmouse_x: %d\tmouse_y: %d\r\n", button, mfb_get_key_name(mod), mouse_x, mouse_y);
-    }
-}
 
 int main(int argc, char *argv[])
 {
     image *test;
     if (argc > 1)
-        test = bmp_read(argv[1]);
+        test = image_read(argv[1]);
     else
     {
         fprintf(stderr, "No file specified\r\n");
@@ -53,20 +35,21 @@ int main(int argc, char *argv[])
 
     if (test == NULL)
     {
+        printf("Test == NULL\r\n");
         return -2;
     }
 
     uint32_t width = test->width;
     uint32_t height = test->height;
 
-    struct mfb_window *window = mfb_open("BMP Test", width, height);
+    struct mfb_window *window = mfb_open("Image Test", width, height);
     if (!window)
-        return 0;
+    {
+        printf("Could not create window\r\n");
+        return -3;
+    }
 
     g_buffer = (uint32_t *)malloc(width * height * 4);
-
-    mfb_set_mouse_scroll_callback(window, mouse_scroll);
-    mfb_set_mouse_button_callback(window, mouse_button);
 
     mfb_update_state state;
     do
