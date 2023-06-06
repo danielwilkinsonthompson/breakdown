@@ -14,6 +14,7 @@ references:
 #define __bmp_h
 #include <stdio.h>  // debugging, file read/write
 #include <stdint.h> // type definitions
+#include "image.h"
 
 /*----------------------------------------------------------------------------
   typdefs
@@ -83,7 +84,6 @@ typedef struct bmp_t
 {
   bmp_header *header;
   bmp_colour *colour_table;
-  bmp_pixel **pixel_data;
 } bmp;
 
 /*----------------------------------------------------------------------------
@@ -102,7 +102,7 @@ typedef struct bmp_t
   f;
 
 // validation
-#define bmp_invalid(img) ((img == NULL) || (img->header == NULL) || (img->pixel_data == NULL))
+#define bmp_invalid(img) ((img == NULL) || (img->header == NULL))
 
 // bmp files are little-endian by convention
 #define uint8_x4_uint32(u8) ((u8[3] << 24) | (u8[2] << 16) | (u8[1] << 8) | (u8[0]))
@@ -114,12 +114,11 @@ typedef struct bmp_t
 -----------------------------------------------------------------------------*/
 // standard
 // bmp* bmp_init(bmp_dim width, bmp_dim height);
-void bmp_write(bmp *image, const char *filename);
-bmp *bmp_read(const char *filename);
-void bmp_printf(const char *format, bmp *image);
-void bmp_fprintf(FILE *f, const char *format, bmp *image, uint32_t left_start, uint32_t bottom_start, uint32_t width, uint32_t height);
+void bmp_write(image *img, const char *filename);
+image *bmp_read(const char *filename);
 void bmp_colour_printf(bmp_colour colour);
+void bmp_fprintf(FILE *f, const char *format, bmp *bitmap_data, uint32_t left_start, uint32_t bottom_start, uint32_t width, uint32_t height);
 void bmp_colour_table_printf(bmp_colour *colour_table, uint32_t number_of_colours);
-void bmp_free(bmp *image);
+void bmp_free(bmp *bitmap_data);
 
 #endif

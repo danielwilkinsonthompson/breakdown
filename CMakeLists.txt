@@ -24,10 +24,12 @@ set(breakdown_src
     include/bmp.h
     include/csv.h
     include/vector.h
+    include/image.h
     src/data/array2d.c
     src/file/bmp.c
     src/file/csv.c
     src/analysis/vector.c
+    src/graphics/image.c
 )
 add_library(breakdown STATIC ${breakdown_src})
 target_include_directories(breakdown PUBLIC "${CMAKE_INSTALL_INCLUDEDIR}")
@@ -39,6 +41,10 @@ install(FILES ${HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 # -----------------------------------------------------------------------------
 # test
 # -----------------------------------------------------------------------------
+add_executable(image_test test/graphics/image_test.c)
+target_link_libraries(image_test PRIVATE breakdown)
+install(TARGETS image_test EXPORT image_test RUNTIME DESTINATION bin)
+
 add_executable(bmp_test test/file/bmp/bmp_test.c)
 target_link_libraries(bmp_test PRIVATE breakdown)
 install(TARGETS bmp_test EXPORT bmp_test RUNTIME DESTINATION bin)
