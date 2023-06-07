@@ -16,17 +16,7 @@ references:
 /*----------------------------------------------------------------------------
   typdefs
 -----------------------------------------------------------------------------*/
-typedef union image_pixel_t
-{
-  uint32_t u32;
-  struct
-  {
-    uint8_t blue;
-    uint8_t green;
-    uint8_t red;
-    uint8_t alpha;
-  };
-} image_pixel;
+typedef uint32_t image_pixel;
 
 typedef struct image_t
 {
@@ -45,12 +35,18 @@ typedef struct image_type_t
   image_write_function write;
 } image_type;
 
-enum image_extensions
-{
-  BMP
-  // PNG
-};
+/*----------------------------------------------------------------------------
+  macros for subpixel construction
+-----------------------------------------------------------------------------*/
+#define image_argb(a, r, g, b) (((image_pixel)a) << 24) | (((image_pixel)r) << 16) | (((image_pixel)g) << 8) | ((image_pixel)b)
+#define image_a(argb) ((uint8_t)((argb & 0xFF000000) >> 24))
+#define image_r(argb) ((uint8_t)((argb & 0x00FF0000) >> 16))
+#define image_g(argb) ((uint8_t)((argb & 0x0000FF00) >> 8))
+#define image_b(argb) ((uint8_t)((argb & 0x000000FF)))
 
+/*----------------------------------------------------------------------------
+  invalid
+-----------------------------------------------------------------------------*/
 // validation
 #define image_invalid(img) ((img == NULL) || (img->pixel_data == NULL))
 

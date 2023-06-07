@@ -9,13 +9,10 @@ references:
  - https://github.com/danielwilkinsonthompson/breakdown
 
 TODO:
-    - read
     - write
     - scale/interpolate
-    - bmp
     - png
     - jpg
-    -
 */
 
 #include <stdio.h>  // debugging, file read/write
@@ -27,7 +24,7 @@ TODO:
 #include "array2d.h"
 
 static image_type _supported_types[] = {
-    [BMP] = {.extension = "bmp", .read = bmp_read, .write = bmp_write}
+    {.extension = "bmp", .read = bmp_read, .write = bmp_write}
     // [PNG] = {.extension = "png", .read = png_read, .write = png_write}
 };
 
@@ -47,6 +44,8 @@ image *image_read(const char *filename)
         if (strstr(file_type, _supported_types[type].extension) != 0)
         {
             img = _supported_types[type].read(filename);
+            if image_invalid (img)
+                printf("Image invalid\r\n");
             break;
         }
         if (type == NOF_IMAGE_TYPES)
@@ -86,11 +85,11 @@ void image_fprintf(FILE *f, const char *format, image *img, uint32_t left_start,
         fprintf(f, ": ");
         for (uint8_t col = 0; col < width; col++)
         {
-            fprintf(f, format, img->pixel_data[bottom_start + row][left_start + col].red);
+            fprintf(f, format, image_r(img->pixel_data[bottom_start + row][left_start + col]));
             fprintf(f, ".");
-            fprintf(f, format, img->pixel_data[bottom_start + row][left_start + col].green);
+            fprintf(f, format, image_g(img->pixel_data[bottom_start + row][left_start + col]));
             fprintf(f, ".");
-            fprintf(f, format, img->pixel_data[bottom_start + row][left_start + col].blue);
+            fprintf(f, format, image_b(img->pixel_data[bottom_start + row][left_start + col]));
             fprintf(f, " ");
         }
         fprintf(f, "\r\n");
