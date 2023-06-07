@@ -23,7 +23,12 @@ static uint16_t _bmp_read_uint16(FILE *bitmap_file);
 static uint32_t _bmp_read_uint32(FILE *bitmap_file);
 static void _bmp_read_infoheader(FILE *bitmap_file, bmp_header *header);
 static void _bmp_read_coreheader(FILE *bitmap_file, bmp_header *header);
-static image_pixel _bmp_colour_lookup(bmp *image, uint32_t index);
+static image_pixel _bmp_colour_lookup(bmp *bitmap_data, uint32_t index);
+void _bmp_colour_printf(image_pixel colour);
+void _bmp_printf(const char *format, bmp *bitmap_data);
+void _bmp_fprintf(FILE *f, const char *format, bmp *bitmap_data);
+void _bmp_colour_table_printf(image_pixel *colour_table, uint32_t number_of_colours);
+void _bmp_free(bmp *bitmap_data);
 static const uint8_t bmp_file_header_signature[2] = BMP_FILE_HEADER_SIGNATURE;
 
 image *bmp_read(const char *filename)
@@ -44,7 +49,7 @@ image *bmp_read(const char *filename)
     bitmap_data->header = (bmp_header *)malloc(sizeof(bmp_header));
     if (bitmap_data->header == NULL)
     {
-        bmp_free(bitmap_data);
+        _bmp_free(bitmap_data);
         return NULL;
     }
 
@@ -52,20 +57,20 @@ image *bmp_read(const char *filename)
     bitmap_file_header = (bmp_file_header *)malloc(sizeof(bmp_file_header));
     if (bitmap_file_header == NULL)
     {
-        bmp_free(bitmap_data);
+        _bmp_free(bitmap_data);
         return NULL;
     }
     bitmap_file = fopen(filename, "rb+");
     if (bitmap_file == NULL)
     {
-        bmp_free(bitmap_data);
+        _bmp_free(bitmap_data);
         free(bitmap_file_header);
         return NULL;
     }
     fread(bitmap_file_header, sizeof(bmp_file_header), 1, bitmap_file);
     if ((bitmap_file_header->signature[0] != bmp_file_header_signature[0]) | (bitmap_file_header->signature[1] != bmp_file_header_signature[1]))
     {
-        bmp_free(bitmap_data);
+        _bmp_free(bitmap_data);
         free(bitmap_file_header);
         fclose(bitmap_file);
         printf("Not a bitmap file\r\n");
@@ -81,7 +86,7 @@ image *bmp_read(const char *filename)
         _bmp_read_coreheader(bitmap_file, bitmap_data->header);
         break;
     default:
-        bmp_free(bitmap_data);
+        _bmp_free(bitmap_data);
         free(bitmap_file_header);
         fclose(bitmap_file);
         printf("Not a recognised bitmap format\r\n");
@@ -94,8 +99,8 @@ image *bmp_read(const char *filename)
     // extract colour table, if any
     if (bitmap_data->header->number_of_colours != BMP_ALL_COLOURS)
     {
-        bitmap_data->colour_table = (bmp_colour *)malloc(sizeof(bmp_colour) * bitmap_data->header->number_of_colours);
-        fread(bitmap_data->colour_table, sizeof(bmp_colour) * bitmap_data->header->number_of_colours, 1, bitmap_file);
+        bitmap_data->colour_table = (image_pixel *)malloc(sizeof(image_pixel) * bitmap_data->header->number_of_colours);
+        fread(bitmap_data->colour_table, sizeof(image_pixel) * bitmap_data->header->number_of_colours, 1, bitmap_file);
     }
     else
     {
@@ -109,7 +114,7 @@ image *bmp_read(const char *filename)
     return_image->pixel_data = (image_pixel **)malloc_2d(return_image->height, return_image->width, sizeof(image_pixel));
     if (return_image->pixel_data == NULL)
     {
-        bmp_free(bitmap_data);
+        _bmp_free(bitmap_data);
         free(bitmap_file_header);
         fclose(bitmap_file);
         return NULL;
@@ -123,7 +128,7 @@ image *bmp_read(const char *filename)
     uint32_t colour_index = 0;
     if (buffer == NULL)
     {
-        bmp_free(bitmap_data);
+        _bmp_free(bitmap_data);
         free(bitmap_file_header);
         fclose(bitmap_file);
         return NULL;
@@ -164,7 +169,7 @@ image *bmp_read(const char *filename)
                 colour_index = 0;
                 break;
             }
-            return_image->pixel_data[row][col] = _bmp_colour_lookup(bitmap_data, colour_index);
+            return_image->pixel_data[return_image->height - 1 - row][col] = _bmp_colour_lookup(bitmap_data, colour_index);
         }
     }
     fclose(bitmap_file);
@@ -211,18 +216,10 @@ static void _bmp_read_coreheader(FILE *bitmap_file, bmp_header *header)
 
 static image_pixel _bmp_colour_lookup(bmp *bitmap_data, uint32_t index)
 {
-    image_pixel colour;
+    image_pixel pixel;
 
     if bmp_invalid (bitmap_data)
-    {
-        colour.red = 0;
-        colour.green = 0;
-        colour.blue = 0;
-        colour.alpha = 0xFF;
-
-        return colour;
-    }
-    colour.alpha = 0xFF;
+        return image_argb(0xFF, 0x00, 0x00, 0x00);
 
     if (bitmap_data->colour_table == NULL)
     {
@@ -231,31 +228,24 @@ static image_pixel _bmp_colour_lookup(bmp *bitmap_data, uint32_t index)
         case 1:
         case 4:
         case 8:
-            // Unsupported, colour table needed
-            colour.red = 0;
-            colour.green = 0;
-            colour.blue = 0;
+            // Unsupported, 1 to 8-bit BMP requires colour table
+            pixel = image_argb(0xFF, 0x00, 0x00, 0x00);
+            fprintf(stderr, "Error: %d-bit image with no colour table\r\n", bitmap_data->header->bitdepth);
         case 16:
-            colour.red = 0x000F & index;
-            colour.green = (0x00F0 & index) >> 4;
-            colour.blue = (0x0F00 & index) >> 8;
+            // Should r and b be swapped?
+            pixel = image_argb(0xFF, ((0x0F00 & index) >> 8), ((0x00F0 & index) >> 4), (0x000F & index));
         case 24:
         case 32:
-            colour.red = (0xFF0000 & index) >> 16;
-            colour.green = (0x00FF00 & index) >> 8;
-            colour.blue = 0x0000FF & index;
+            pixel = image_argb(0xFF, ((0xFF0000 & index) >> 16), ((0x00FF00 & index) >> 8), (0x0000FF & index));
         default:
             break;
         }
     }
     else
     {
-        colour.red = bitmap_data->colour_table[index].red;
-        colour.green = bitmap_data->colour_table[index].blue;
-        colour.blue = bitmap_data->colour_table[index].blue;
+        pixel = 0xFF000000 | bitmap_data->colour_table[index];
     }
-
-    return colour;
+    return pixel;
 }
 
 void bmp_write(image *bitmap_data, const char *filename)
@@ -267,12 +257,12 @@ void bmp_write(image *bitmap_data, const char *filename)
     fclose(bmp_file);
 }
 
-void bmp_printf(const char *format, bmp *image)
+void _bmp_printf(const char *format, bmp *bitmap_data)
 {
-    bmp_fprintf(stderr, format, image, 0, 0, 16, 16);
+    _bmp_fprintf(stderr, format, bitmap_data);
 }
 
-void bmp_fprintf(FILE *f, const char *format, bmp *bitmap_data, uint32_t left_start, uint32_t bottom_start, uint32_t width, uint32_t height)
+void _bmp_fprintf(FILE *f, const char *format, bmp *bitmap_data)
 {
     if bmp_invalid (bitmap_data)
         return;
@@ -286,15 +276,15 @@ void bmp_fprintf(FILE *f, const char *format, bmp *bitmap_data, uint32_t left_st
     printf("bmp.image_size = %d\n\r", bitmap_data->header->image_size);
     printf("bmp.number_of_colours = %d\n\r", bitmap_data->header->number_of_colours);
     printf("bmp.number_of_important_colours = %d\n\r", bitmap_data->header->number_of_important_colours);
-    bmp_colour_table_printf(bitmap_data->colour_table, bitmap_data->header->number_of_colours);
+    _bmp_colour_table_printf(bitmap_data->colour_table, bitmap_data->header->number_of_colours);
 }
 
-void bmp_colour_printf(bmp_colour colour)
+void _bmp_colour_printf(image_pixel colour)
 {
-    fprintf(stderr, "%02x.%02x.%02x ", colour.red, colour.green, colour.blue);
+    fprintf(stderr, "%02x.%02x.%02x ", image_r(colour), image_g(colour), image_b(colour));
 }
 
-void bmp_colour_table_printf(bmp_colour *colour_table, uint32_t number_of_colours)
+void _bmp_colour_table_printf(image_pixel *colour_table, uint32_t number_of_colours)
 {
     uint32_t total_rows = number_of_colours / 16;
     if ((colour_table == NULL) || (number_of_colours == 0))
@@ -312,13 +302,13 @@ void bmp_colour_table_printf(bmp_colour *colour_table, uint32_t number_of_colour
         fprintf(stderr, "%02x: ", row * 16);
         for (uint8_t col = 0; col < 16; col++)
         {
-            bmp_colour_printf(colour_table[row * 16 + col]);
+            _bmp_colour_printf(colour_table[row * 16 + col]);
         }
         fprintf(stderr, "\r\n");
     }
 }
 
-void bmp_free(bmp *bitmap_data)
+void _bmp_free(bmp *bitmap_data)
 {
     free(bitmap_data->header);
     free(bitmap_data->colour_table);
