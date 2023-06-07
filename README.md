@@ -1,5 +1,5 @@
 # Breakdown
-A C library for data processing
+A C library of my very own
 
 ## Building
 
