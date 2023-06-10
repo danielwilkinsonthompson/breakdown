@@ -25,11 +25,13 @@ set(breakdown_src
     include/csv.h
     include/vector.h
     include/image.h
+    include/frame.h
     src/data/array2d.c
     src/file/bmp.c
     src/file/csv.c
     src/analysis/vector.c
     src/graphics/image.c
+    src/graphics/frame.c
 )
 add_library(breakdown STATIC ${breakdown_src})
 target_include_directories(breakdown PUBLIC "${CMAKE_INSTALL_INCLUDEDIR}")
