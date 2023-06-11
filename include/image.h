@@ -36,7 +36,7 @@ typedef struct image_t
 /*----------------------------------------------------------------------------
   invalid
   ----------------------------------------------------------------------------
-  true when image is invalid
+  true when image is not propoerly initialised
 -----------------------------------------------------------------------------*/
 #define image_invalid(img) ((img == NULL) || (img->pixel_data == NULL))
 
