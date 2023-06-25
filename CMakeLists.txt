@@ -25,10 +25,12 @@ set(breakdown_src
     include/csv.h
     include/image.h
     include/frame.h
+    include/huffman.h
     include/rle.h
     include/vector.h
     src/analysis/vector.c
     src/compression/rle.c
+    src/compression/huffman.c
     src/data/array2d.c
     src/file/bmp.c
     src/file/csv.c
@@ -60,3 +62,6 @@ add_test(NAME VECTOR_TEST_CSV COMMAND ./vector_test ../test/analysis/test_vect.c
 
 add_executable(rle_test test/compression/rle_test.c)
 target_link_libraries(rle_test PRIVATE breakdown)
+
+add_executable(huffman_test test/compression/huffman_test.c)
+target_link_libraries(huffman_test PRIVATE breakdown)
