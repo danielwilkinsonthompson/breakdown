@@ -38,6 +38,8 @@ static _image_type _supported_types[] = {
     // [PNG] = {.extension = "png", .read = png_read, .write = png_write}
 };
 
+static image_pixel image_pixel_interpolate(image_pixel p1, image_pixel p2, float ratio);
+
 static _image_type *_image_get_type(const char *filename);
 #define NOF_IMAGE_TYPES (sizeof(_supported_types) / sizeof(_image_type))
 
@@ -118,6 +120,67 @@ void image_write(image *img, const char *filename)
         return;
 
     handler->write(img, filename);
+}
+
+image *image_resize(image *img, uint32_t height, uint32_t width)
+{
+    image *new_img;
+
+    if image_invalid (img)
+        return NULL;
+
+    new_img = image_init(height, width);
+    if image_invalid (new_img)
+        return NULL;
+
+    float x_ratio = (float)img->width / (float)width;
+    float y_ratio = (float)img->height / (float)height;
+
+    // bilinear interpolation of pixels from img to new_img
+    for (uint32_t row = 0; row < height; row++)
+    {
+        for (uint32_t col = 0; col < width; col++)
+        {
+            float interp_x = x_ratio * col; // equivalent location in img
+            float interp_y = y_ratio * row; // equivalent location in img
+
+            image_pixel x0y0 = img->pixel_data[(uint32_t)interp_y * img->width + (uint32_t)interp_x];
+            image_pixel x1y0 = img->pixel_data[(uint32_t)interp_y * img->width + (uint32_t)interp_x + 1];
+            image_pixel x0y1 = img->pixel_data[(uint32_t)interp_y * img->width + (uint32_t)interp_x + img->width];
+            image_pixel x1y1 = img->pixel_data[(uint32_t)interp_y * img->width + (uint32_t)interp_x + img->width + 1];
+
+            image_pixel interp_x0y0_x1y0 = image_pixel_interpolate(x0y0, x1y0, interp_x - (uint32_t)interp_x);
+            image_pixel interp_x0y1_x1y1 = image_pixel_interpolate(x0y1, x1y1, interp_x - (uint32_t)interp_x);
+
+            image_pixel interpolated_pixel = image_pixel_interpolate(interp_x0y0_x1y0, interp_x0y1_x1y1, interp_y - (uint32_t)interp_y);
+
+            new_img->pixel_data[row * width + col] = interpolated_pixel;
+            // find the 4 nearest pixels in img
+            // calculate the weighted average of the 4 pixels
+            // set the pixel in new_img to the weighted average
+        }
+    }
+
+    return new_img;
+
+malloc_error:
+    free(new_img);
+    return NULL;
+}
+
+static image_pixel image_pixel_interpolate(image_pixel p1, image_pixel p2, float ratio)
+{
+    uint8_t red, green, blue, alpha;
+    image_pixel interpolated_pixel;
+
+    red = (uint8_t)((float)image_r(p1) * (1 - ratio) + (float)image_r(p2) * ratio);
+    green = (uint8_t)((float)image_g(p1) * (1 - ratio) + (float)image_g(p2) * ratio);
+    blue = (uint8_t)((float)image_b(p1) * (1 - ratio) + (float)image_b(p2) * ratio);
+    alpha = (uint8_t)((float)image_a(p1) * (1 - ratio) + (float)image_a(p2) * ratio);
+
+    interpolated_pixel = image_argb(alpha, red, green, blue);
+
+    return interpolated_pixel;
 }
 
 void image_printf(const char *format, image *img)

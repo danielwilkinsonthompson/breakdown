@@ -36,7 +36,7 @@ typedef struct image_t
 /*----------------------------------------------------------------------------
   invalid
   ----------------------------------------------------------------------------
-  true when image is not propoerly initialised
+  true when image is not properly initialised
 -----------------------------------------------------------------------------*/
 #define image_invalid(img) ((img == NULL) || (img->pixel_data == NULL))
 
@@ -65,6 +65,14 @@ image *image_read(const char *filename);
   filename  : name of file to be written (extension required)
 -----------------------------------------------------------------------------*/
 void image_write(image *img, const char *filename);
+
+/*----------------------------------------------------------------------------
+  resize
+  ----------------------------------------------------------------------------
+  resize an image
+  img       : image to be resized
+-----------------------------------------------------------------------------*/
+image *image_resize(image *img, uint32_t new_height, uint32_t new_width);
 
 /*----------------------------------------------------------------------------
   printf
