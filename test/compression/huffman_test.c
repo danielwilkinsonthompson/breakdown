@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
     huffman_buffer *uncompressed;
     huffman_buffer *compressed;
 
-    uint32_t data[] = {'C', 'A', 'C', 'B', 'C', 'D', 'A', 'B', 'C', 'A', 'B', 'A', 'Z', 'Z', 'Z', 'D'};
+    uint32_t data[] = {'C', 'A', 'C', 'B', 'I', 'I', 'C', 'D', 'A', 'B', 'C', 'A', 'B', 'A', 'Z', 'Z', 'Z', 'D', 'Q'};
     uint32_t length = sizeof(data) / sizeof(data[0]);
 
     uncompressed = huffman_buffer_init(length);

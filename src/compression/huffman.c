@@ -1,26 +1,33 @@
-// Huffman Coding C
-// Source: https://www.programiz.com/dsa/huffman-coding
+/*=============================================================================
+                                    huffman.c
+-------------------------------------------------------------------------------
+huffman coding
 
-/*
-Status:
-- FIXME: Compressed data doesn't seem to cross word boundaries correctly
+© Daniel Wilkinson-Thompson 2023
+daniel@wilkinson-thompson.com
 
+references
+- https://www.programiz.com/dsa/huffman-coding
 
-*/
-
+status
+- compressed data doesn't seem to cross word boundaries correctly
+- need to insert internal nodes
+-----------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include "huffman.h"
+#include "list.h"
 
 typedef struct node_t
 {
     huffman_data value;
-    huffman_length freq;
-    huffman_length freq_children;
+    huffman_length weight;
+    huffman_length weight_children;
     uint32_t code;
     uint32_t code_length;
-    struct node_t *child;
+    struct node_t *child0;
+    struct node_t *child1;
 } node;
 
 typedef struct huffman_tree_t
@@ -32,7 +39,7 @@ typedef struct huffman_tree_t
 
 #define debug_node_value(n)      \
     fprintf(stderr, #n " = \n"); \
-    _huffman_printf_node(n);     \
+    _print_node(n);              \
     fprintf(stderr, "\n");
 
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c\n"
@@ -48,11 +55,33 @@ typedef struct huffman_tree_t
 
 #define tree_invalid(tree) ((tree == NULL) || (tree->nodes == NULL))
 
-static void _huffman_printf_node(node *n);
-// static void _huffman_printf_huffman_tree(huffman_tree *tree);
+static node *_init_node(void);
+static void _print_node(node *n);
 static void _free_huffman_tree(huffman_tree *tree);
 static huffman_buffer *_huffman_build_compressed_buffer(huffman_buffer *uncompressed, huffman_tree *tree);
 static huffman_tree *_build_huffman_tree(huffman_buffer *uncompressed);
+static void _assign_codes(node *this_node, uint32_t this_code, uint32_t this_code_length);
+
+static node *_init_node(void)
+{
+    node *new_node;
+
+    new_node = (node *)malloc(sizeof(node));
+    if (new_node == NULL)
+        goto malloc_error;
+
+    new_node->value = 0;
+    new_node->child0 = NULL;
+    new_node->child1 = NULL;
+    new_node->code = 0;
+    new_node->code_length = 0;
+
+    return new_node;
+
+malloc_error:
+    free(new_node);
+    return NULL;
+}
 
 huffman_buffer *huffman_buffer_init(huffman_length length)
 {
@@ -68,110 +97,148 @@ huffman_buffer *huffman_buffer_init(huffman_length length)
     return buffer;
 }
 
-/*
-    build_huffman_tree
-    traverse uncompressed data and build a corresponding huffman tree
-*/
 static huffman_tree *_build_huffman_tree(huffman_buffer *uncompressed)
 {
     huffman_tree *tree;
-    huffman_length ordered_nodes[uncompressed->length];
     uint32_t code_child = 0;
     uint8_t code_length = 0;
-    node *this_node;
+    node *this_node, *next_node, *head;
+    list *stack = list_init();
+    huffman_length i, n, m;
 
     tree = (huffman_tree *)malloc(sizeof(huffman_tree));
     if (tree == NULL)
         goto malloc_error;
 
-    tree->nodes = (node **)malloc(sizeof(node) * uncompressed->length);
+    tree->nodes = (node **)malloc(sizeof(node *) * uncompressed->length);
     if (tree->nodes == NULL)
         goto malloc_error;
 
     tree->size = 0;
-    for (huffman_length n = 0; n < uncompressed->length; n++)
+    for (n = 0; n < uncompressed->length; n++)
     {
-        tree->nodes[n] = (node *)malloc(sizeof(node));
+        tree->nodes[n] = _init_node();
         if (tree->nodes[n] == NULL)
             goto malloc_error;
     }
 
     // create nodes for all unique data values and track their occurrences
-    for (huffman_length i = 0; i < uncompressed->length; i++)
+    for (i = 0; i < uncompressed->length; i++)
     {
-        for (huffman_length n = 0; n < uncompressed->length; n++)
+        for (n = 0; n < uncompressed->length; n++)
         {
             if (uncompressed->data[i] == tree->nodes[n]->value)
             {
-                tree->nodes[n]->freq++;
+                tree->nodes[n]->weight++;
                 break;
             }
             if (n == tree->size)
             { // should only get here after searching whole tree and a match wasn't found
                 tree->nodes[tree->size]->value = uncompressed->data[i];
-                tree->nodes[tree->size]->freq = 1;
-                tree->nodes[tree->size]->freq_children = 0;
+                tree->nodes[tree->size]->weight = 1;
+                tree->nodes[tree->size]->weight_children = 0;
                 tree->size++;
                 break;
             }
         }
     }
 
-    // list nodes in order of occurrence
-    for (huffman_length n = 0; n < tree->size; n++)
+    // sort nodes by weight
+    for (n = 0; n < tree->size; n++)
     {
-        ordered_nodes[n] = n;
-        for (huffman_length m = n; m > 0; m--)
+        for (m = n; m > 0; m--)
         {
-            if (tree->nodes[ordered_nodes[m]]->freq < tree->nodes[ordered_nodes[m - 1]]->freq)
+            if (tree->nodes[m]->weight < tree->nodes[m - 1]->weight)
             {
-                huffman_length temp = ordered_nodes[m];
-                ordered_nodes[m] = ordered_nodes[m - 1];
-                ordered_nodes[m - 1] = temp;
+                this_node = tree->nodes[m];
+                tree->nodes[m] = tree->nodes[m - 1];
+                tree->nodes[m - 1] = this_node;
             }
         }
     }
 
-    tree->nodes[ordered_nodes[0]]->freq_children = 0;
-    for (huffman_length n = 1; n < tree->size; n++)
-    {
-        tree->nodes[ordered_nodes[n]]->freq_children = tree->nodes[ordered_nodes[n - 1]]->freq + tree->nodes[ordered_nodes[n - 1]]->freq_children;
-    }
+    // create tree
+    for (n = 0; n < tree->size; n++)
+        list_append(stack, tree->nodes[n]);
 
-    for (huffman_length n = tree->size - 1; n >= 0; n--)
+    while (true)
     {
-        this_node = tree->nodes[ordered_nodes[n]];
-        if (this_node->freq_children == 0)
+        for (n = 0; n < stack->size; n++)
         {
-            this_node->code = code_child;
-            this_node->child = NULL;
-            this_node->code_length = code_length;
+            this_node = list_item(stack, n);
+        }
+        this_node = _init_node();
+        this_node->value = 0;
+        this_node->child0 = list_pop(stack);
+        if (this_node->child0 == NULL)
+            break;
+        this_node->child1 = list_pop(stack);
+        if (this_node->child1 == NULL)
+            break;
+        tree->size++;
+        this_node->weight_children = this_node->child0->weight + this_node->child1->weight;
+        this_node->weight = this_node->weight_children;
+        this_node->code = 0;
+        this_node->code_length = 0;
+        next_node = list_pop(stack);
+        if (next_node == NULL)
+        {
+            list_push(stack, this_node);
             break;
         }
-        if ((this_node->freq < this_node->freq_children))
+        if (next_node->weight > this_node->weight)
         {
-            this_node->code = (code_child << 1) + 0;
-            code_child = (code_child << 1) + 1;
+            this_node->code = (this_node->code << 1) + 0;
+            this_node->code_length++;
+            list_push(stack, next_node);
+            list_push(stack, this_node);
         }
         else
         {
-            this_node->code = (code_child << 1) + 1;
-            code_child = (code_child << 1) + 0;
+            this_node->code = (this_node->code << 1) + 1;
+            this_node->code_length++;
+            list_push(stack, this_node);
+            list_push(stack, next_node);
         }
-        code_length++;
-        this_node->code_length = code_length;
-        this_node->child = tree->nodes[ordered_nodes[n - 1]];
-        // this_node->child->code_length = this_node->code_length + 1;
     }
-    tree->head = tree->nodes[ordered_nodes[tree->size - 1]];
 
-    _huffman_printf_node(tree->head);
+    if (stack->size > 1)
+    {
+        printf("something went wrong: stack size: %zu\n", stack->size);
+        goto malloc_error;
+        // printf("stack size: %zu\n", stack->size);
+    }
+    else
+    {
+        this_node = list_pop(stack);
+        tree->head = this_node;
+    }
+
+    // assign codes to nodes
+    _assign_codes(tree->head, 0, 0);
+
+    // _print_node(tree->head);
+    list_free(stack);
 
     return tree;
 
 malloc_error:
+    printf("malloc error\r\n");
+    list_free(stack);
     _free_huffman_tree(tree);
     return NULL;
+}
+
+static void _assign_codes(node *this_node, uint32_t this_code, uint32_t this_code_length)
+{
+    if (this_node == NULL)
+        return;
+    this_node->code = this_code;
+    // printf("%C = %C%C%C%C_%C%C%C%C\r\n", this_node->value, BYTE_TO_BINARY(this_node->code));
+    this_node->code_length = this_code_length;
+    _assign_codes(this_node->child0, (this_code << 1) + 0, this_code_length + 1);
+    _assign_codes(this_node->child1, (this_code << 1) + 1, this_code_length + 1);
+    return;
 }
 
 static huffman_buffer *_huffman_build_compressed_buffer(huffman_buffer *uncompressed, huffman_tree *tree)
@@ -181,7 +248,7 @@ static huffman_buffer *_huffman_build_compressed_buffer(huffman_buffer *uncompre
     uint8_t bit_index = 0;
     uint8_t bit_shift = 0;
     node *first_node;
-    node *head;
+    node *head, *parent;
 
     // we don't know how long it needs to be, but it should be less than the uncompressed uncompressed->length
     compressed = (huffman_buffer *)malloc(sizeof(huffman_buffer));
@@ -195,30 +262,34 @@ static huffman_buffer *_huffman_build_compressed_buffer(huffman_buffer *uncompre
     compressed->length = 0;
     first_node = tree->head;
     head = tree->head;
+    parent = tree->head;
 
+    // printf("looping through data\r\n");
     for (uint32_t i = 0; i < uncompressed->length; i++)
     {
+        // printf("data = %C\r\n", uncompressed->data[i]);
         for (uint32_t n = 0; n < tree->size; n++)
         {
-            if (head->value == uncompressed->data[i])
-            {
-                fprintf(stderr, "uncompressed->data[%d] == %C -> %02x\r\n", i, head->value, head->code);
-                // fprintf(stderr, "%C -> code = 0b%C%C%C%C_%C%C%C%C\r\n", head->value, BYTE_TO_BINARY(head->code));
-                _huffman_printf_node(head);
 
+            if ((head->child0 == NULL) && (head->value == uncompressed->data[i]))
+            {
+                printf("%C -> %C%C%C%C_%C%C%C%C\r\n", uncompressed->data[i], BYTE_TO_BINARY(head->code));
                 // FIXME: Compressed data is not crossing boundaries correctly
                 if ((bit_index + head->code_length) >= 32)
                 {
                     if (compressed->length < uncompressed->length)
                     {
-                        temp = compressed->data[compressed->length];
-                        compressed->data[compressed->length] = (compressed->data[compressed->length] << (head->code_length)) + head->code; // need to figure this out later
+                        temp = head->code;
+                        compressed->data[compressed->length] = (compressed->data[compressed->length] << (32 - bit_index)) + (head->code << (head->code_length - (32 - bit_index))); // need to figure this out later
+                        fprintf(stderr, "compressed->data[%d] = 0b%C%C%C%C_%C%C%C%C__%C%C%C%C_%C%C%C%C___%C%C%C%C_%C%C%C%C__%C%C%C%C_%C%C%C%C\r\n", compressed->length, BYTE_TO_BINARY((compressed->data[compressed->length] & 0xFF000000) >> 24), BYTE_TO_BINARY((compressed->data[compressed->length] & 0x00FF0000) >> 16), BYTE_TO_BINARY((compressed->data[compressed->length] & 0x0000FF00) >> 8), BYTE_TO_BINARY(compressed->data[compressed->length] & 0x000000FF));
                         compressed->length += 1;
                         bit_index = (bit_index + head->code_length) % 32;
-                        compressed->data[compressed->length] = temp >> (32 - (bit_index));
+                        compressed->data[compressed->length] = head->code >> (head->code_length - bit_index);
+                        fprintf(stderr, "compressed->data[%d] = 0b%C%C%C%C_%C%C%C%C__%C%C%C%C_%C%C%C%C___%C%C%C%C_%C%C%C%C__%C%C%C%C_%C%C%C%C\r\n", compressed->length, BYTE_TO_BINARY((compressed->data[compressed->length] & 0xFF000000) >> 24), BYTE_TO_BINARY((compressed->data[compressed->length] & 0x00FF0000) >> 16), BYTE_TO_BINARY((compressed->data[compressed->length] & 0x0000FF00) >> 8), BYTE_TO_BINARY(compressed->data[compressed->length] & 0x000000FF));
                     }
                     else
                     {
+                        // call again with longer output buffer
                         fprintf(stderr, "panic!!\r\n");
                         break;
                     }
@@ -227,26 +298,28 @@ static huffman_buffer *_huffman_build_compressed_buffer(huffman_buffer *uncompre
                 {
                     compressed->data[compressed->length] = (compressed->data[compressed->length] << head->code_length) + head->code; // need to figure this out later
                     bit_index += head->code_length;
+                    fprintf(stderr, "compressed->data[%d] = 0b%C%C%C%C_%C%C%C%C__%C%C%C%C_%C%C%C%C___%C%C%C%C_%C%C%C%C__%C%C%C%C_%C%C%C%C\r\n", compressed->length, BYTE_TO_BINARY((compressed->data[compressed->length] & 0xFF000000) >> 24), BYTE_TO_BINARY((compressed->data[compressed->length] & 0x00FF0000) >> 16), BYTE_TO_BINARY((compressed->data[compressed->length] & 0x0000FF00) >> 8), BYTE_TO_BINARY(compressed->data[compressed->length] & 0x000000FF));
                 }
-
-                fprintf(stderr, "compressed->data[%d] = 0b%C%C%C%C_%C%C%C%C__%C%C%C%C_%C%C%C%C___%C%C%C%C_%C%C%C%C__%C%C%C%C_%C%C%C%C\r\n", compressed->length, BYTE_TO_BINARY((compressed->data[compressed->length] & 0xFF000000) >> 24), BYTE_TO_BINARY((compressed->data[compressed->length] & 0x00FF0000) >> 16), BYTE_TO_BINARY((compressed->data[compressed->length] & 0x0000FF00) >> 8), BYTE_TO_BINARY(compressed->data[compressed->length] & 0x000000FF));
-
                 head = first_node;
                 break;
             }
             else
             {
-                // fprintf(stderr, "%C value != %C compressed->data[%d]\r\n", head->value, compressed->data[i], i);
-
-                if (head->child != NULL)
+                if (head->child0 != NULL)
                 {
-                    // _huffman_printf_node(head);
-                    head = head->child;
+                    parent = head;
+                    head = head->child0;
                 }
                 else
                 {
-                    head = first_node;
-                    break;
+                    if (parent->child1 != NULL)
+                        head = parent->child1;
+                    else
+                    {
+                        head = first_node;
+                        fprintf(stderr, "no_match_found!!\r\n");
+                        break;
+                    }
                 }
             }
         }
@@ -283,19 +356,42 @@ huffman_buffer *huffman_decompress(huffman_buffer *compressed)
 
 static huffman_buffer *_huffman_build_decompressed_buffer(huffman_buffer *uncompressed)
 {
+    return uncompressed; // FIXME: need to complete
 }
 
-static void _huffman_printf_node(node *n)
+static void _huffman_print_tree(huffman_tree *tree)
 {
+    for (huffman_length n = 0; n < tree->size; n++)
+    {
+        fprintf(stderr, "tree->nodes[%d] = %C\r\n", n, tree->nodes[n]->value);
+    }
+}
+
+static void _print_node(node *n)
+{
+    fprintf(stderr, "node:\r\n");
     fprintf(stderr, "\tvalue -> %C\r\n", n->value);
-    fprintf(stderr, "\tfreq -> %d\r\n", n->freq);
-    fprintf(stderr, "\tfreq_children -> %d\r\n", n->freq_children);
+    fprintf(stderr, "\tfreq -> %d\r\n", n->weight);
+    fprintf(stderr, "\tfreq_children -> %d\r\n", n->weight_children);
     fprintf(stderr, "\tcode -> %d\r\n", n->code);
     fprintf(stderr, "\tcode_length -> %d\r\n", n->code_length);
-    if (n->child == NULL)
-        fprintf(stderr, "\tchild -> NULL\r\n");
+    if (n->child0 == NULL)
+        fprintf(stderr, "\tchild0 -> NULL\r\n");
     else
-        fprintf(stderr, "\tchild -> %C\r\n", n->child->value);
+        fprintf(stderr, "\tchild0 -> %C\r\n", n->child0->value);
+    if (n->child1 == NULL)
+        fprintf(stderr, "\tchild1 -> NULL\r\n");
+    else
+        fprintf(stderr, "\tchild1 -> %C\r\n", n->child1->value);
+}
+
+static void _print_huffman_tree(huffman_tree *tree)
+{
+    // for (uint32_t n = 0; n < tree->size; n++)
+    // {
+    //     fprintf(stderr, "tree->nodes[%d] = %C\r\n", n, tree->nodes[n]->value);
+    //     _print_node(tree->nodes[n]);
+    // }
 }
 
 static void _free_huffman_tree(huffman_tree *tree)
