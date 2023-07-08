@@ -229,19 +229,19 @@ error frame_draw(frame *f)
             {
                 uint32_t *pixel = l->buffer + (y * l->width) + x;
                 uint32_t *frame_pixel = f->buffer + ((y + l->y) * f->width) + (x + l->x);
-                // alpha blending should occur here
-                alpha_layer = (float)image_a(*pixel) / 255.0;
-                alpha_frame = (float)image_a(*frame_pixel) / 255.0;
-                alpha_composite = alpha_layer + alpha_frame * (1 - alpha_layer);
-                if (alpha_layer == 0)
+
+                if (image_a(*pixel) == 0)
                 {
                     continue;
                 }
-                if ((alpha_layer == 255) || (i == 0))
+                if ((image_a(*pixel) == 255) || (i == 0))
                 {
                     *frame_pixel = *pixel;
                     continue;
                 }
+                alpha_layer = (float)image_a(*pixel) / 255.0;
+                alpha_frame = (float)image_a(*frame_pixel) / 255.0;
+                alpha_composite = alpha_layer + alpha_frame * (1 - alpha_layer);
 
                 red_composite = (float)image_r(*pixel) * alpha_layer + (float)image_r(*frame_pixel) * alpha_frame * (1 - alpha_layer) / alpha_composite;
                 green_composite = (float)image_g(*pixel) * alpha_layer + (float)image_g(*frame_pixel) * alpha_frame * (1 - alpha_layer) / alpha_composite;
