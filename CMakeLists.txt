@@ -47,6 +47,7 @@ set(breakdown_src
     # src/file/png.c
     src/graphics/image.c
     src/graphics/frame.c
+    src/system/error.c
 )
 add_library(breakdown STATIC ${breakdown_src})
 target_include_directories(breakdown PUBLIC "${CMAKE_INSTALL_INCLUDEDIR}")

@@ -96,9 +96,15 @@ void *list_pop(list *l)
         return NULL;
 
     object = l->head;
-    l->head = l->head->next;
-    l->head->prev = NULL;
     l->size -= 1;
+
+    if (l->size == 0)
+        l->head = NULL;
+    else
+    {
+        l->head = l->head->next;
+        l->head->prev = NULL;
+    }
 
     return object->value;
 }
