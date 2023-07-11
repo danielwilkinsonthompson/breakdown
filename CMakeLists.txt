@@ -22,8 +22,9 @@ add_subdirectory(lib/minifb lib)
 set(breakdown_src
     include/array2d.h    
     include/bmp.h
-    # include/buffer.h
+    include/buffer.h
     include/csv.h
+    include/deflate.h
     include/dictionary.h
     include/error.h
     include/frame.h
@@ -35,8 +36,9 @@ set(breakdown_src
     include/vector.h
     # include/zip.h
     src/analysis/vector.c
-    src/compression/rle.c
+    src/compression/deflate.c
     src/compression/huffman.c
+    src/compression/rle.c
     src/data/array2d.c
     src/data/dictionary.c
     src/data/list.c
