@@ -11,7 +11,7 @@ references
 
 status
 - compressed data doesn't seem to cross word boundaries correctly
-- need to insert internal nodes
+- need to insert EOF node into tree
 -----------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
@@ -206,7 +206,6 @@ static huffman_tree *_build_huffman_tree(huffman_buffer *uncompressed)
     {
         printf("something went wrong: stack size: %zu\n", stack->size);
         goto malloc_error;
-        // printf("stack size: %zu\n", stack->size);
     }
     else
     {
@@ -217,7 +216,6 @@ static huffman_tree *_build_huffman_tree(huffman_buffer *uncompressed)
     // assign codes to nodes
     _assign_codes(tree->head, 0, 0);
 
-    // _print_node(tree->head);
     list_free(stack);
 
     return tree;
@@ -234,7 +232,6 @@ static void _assign_codes(node *this_node, uint32_t this_code, uint32_t this_cod
     if (this_node == NULL)
         return;
     this_node->code = this_code;
-    // printf("%C = %C%C%C%C_%C%C%C%C\r\n", this_node->value, BYTE_TO_BINARY(this_node->code));
     this_node->code_length = this_code_length;
     _assign_codes(this_node->child0, (this_code << 1) + 0, this_code_length + 1);
     _assign_codes(this_node->child1, (this_code << 1) + 1, this_code_length + 1);
@@ -264,13 +261,10 @@ static huffman_buffer *_huffman_build_compressed_buffer(huffman_buffer *uncompre
     head = tree->head;
     parent = tree->head;
 
-    // printf("looping through data\r\n");
     for (uint32_t i = 0; i < uncompressed->length; i++)
     {
-        // printf("data = %C\r\n", uncompressed->data[i]);
         for (uint32_t n = 0; n < tree->size; n++)
         {
-
             if ((head->child0 == NULL) && (head->value == uncompressed->data[i]))
             {
                 printf("%C -> %C%C%C%C_%C%C%C%C\r\n", uncompressed->data[i], BYTE_TO_BINARY(head->code));
