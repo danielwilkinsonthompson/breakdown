@@ -1,20 +1,16 @@
 /*=============================================================================
-                                  image.h
+                                  image.c
 -------------------------------------------------------------------------------
 read and write images
 
 © Daniel Wilkinson-Thompson 2023
 daniel@wilkinson-thompson.com
 references:
- - https://github.com/danielwilkinsonthompson/breakdown
 
 TODO:
-    - write
-    - scale/interpolate
     - png
     - jpg
-*/
-
+-----------------------------------------------------------------------------*/
 #include <stdio.h>  // debugging, file read/write
 #include <stdint.h> // type definitions
 #include <stdlib.h> // malloc/free
@@ -22,6 +18,7 @@ TODO:
 #include "bmp.h"
 #include "image.h"
 #include "array2d.h"
+
 
 typedef image *(*_image_read_function)(const char *filename);
 typedef void (*_image_write_function)(image *img, const char *filename);
