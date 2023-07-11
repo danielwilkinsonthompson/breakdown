@@ -54,6 +54,7 @@ dkms.conf
 
 # Binaries and test data
 *.bmp
+*.png
 
 # VSCode
 *.vscode*

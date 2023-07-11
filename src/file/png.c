@@ -17,6 +17,10 @@ references:
 - http://www.sunshine2k.de/coding/javascript/crc/crc_js.html
 - [1] http://www.libpng.org/pub/png/spec/1.2/png-1.2.pdf
 - [2] http://pnrsolution.org/Datacenter/Vol4/Issue1/58.pdf
+
+TODO:
+- break crc out to separate file
+- break out deflate to separate file
 -----------------------------------------------------------------------------*/
 #include <stdio.h>   // fprintf, stderr
 #include <stdint.h>  // uint8_t, uint16_t, uint32_t
@@ -32,21 +36,6 @@ references:
 -----------------------------------------------------------------------------*/
 // #define DEBUG
 
-#ifndef PNG_DEBUG_FORMAT
-#define PNG_DEBUG_FORMAT "%02x"
-#endif
-#define png_debug_value(pix)         \
-  fprintf(stderr, #pix " = \n");     \
-  png_printf(PNG_DEBUG_FORMAT, pix); \
-  fprintf(stderr, "\n\n");
-#define png_debug_command(f)        \
-  fprintf(stderr, ">> " #f "\n\n"); \
-  f;
-
-#define PNG_SIGNATURE                           \
-  {                                             \
-    0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A \
-  }
 #define PNG_SIGNATURE_LENGTH 8
 #define png_invalid(img) ((img == NULL) || (img->header == NULL))
 
@@ -236,6 +225,7 @@ typedef struct png_t
 bool _crc_table_generated = false;
 uint32_t crc_table[256];
 const uint32_t crc_polynomial = 0xEDB88320;
+const uint32_t crc_initial = 0xFFFFFFFF;
 const uint8_t png_signature[PNG_SIGNATURE_LENGTH] = {137, 80, 78, 71, 13, 10, 26, 10};
 
 /*----------------------------------------------------------------------------
@@ -298,8 +288,10 @@ static png_chunk *_get_chunk(png *img)
   chunk->crc = _big_endian_to_uint32_t(crc);
   if (_check_crc(chunk) == false)
     goto io_error;
+#ifdef DEBUG
   else
     printf("crc check passed\n");
+#endif
 
   return chunk;
 
@@ -482,13 +474,13 @@ static void _generate_crc_table(void)
 {
   uint32_t crc;
 
-  for (uint16_t n = 0; n < 256; n++)
+  for (uint16_t byte_value = 0; byte_value < 256; byte_value++)
   {
-    crc = (uint32_t)n;
-    for (uint8_t k = 0; k < 8; k++)
+    crc = (uint32_t)byte_value;
+    for (uint8_t bit_index = 0; bit_index < 8; bit_index++)
       crc = (crc & 1) ? (crc_polynomial ^ (crc >> 1)) : (crc >> 1);
 
-    crc_table[n] = crc;
+    crc_table[byte_value] = crc;
   }
   _crc_table_generated = true;
 }
@@ -513,7 +505,7 @@ static bool _check_crc(png_chunk *chunk)
   chunk_type[2] = (chunk->type >> 8);
   chunk_type[3] = (chunk->type);
 
-  uint32_t crc = update_crc(0xffffffffL, chunk_type, sizeof(chunk->type));
+  uint32_t crc = update_crc(crc_initial, chunk_type, sizeof(chunk->type));
   crc = update_crc(crc, chunk->data, chunk->length);
   crc ^= 0xffffffffL;
 
