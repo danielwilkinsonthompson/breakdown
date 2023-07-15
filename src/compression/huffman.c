@@ -12,6 +12,10 @@ references
 status
 - compressed data doesn't seem to cross word boundaries correctly
 - need to insert EOF node into tree
+- need to ensure that equal length codes are sorted by value
+- need to implement tree traversal
+- need to implement tree freeing
+- need to implement tree printing
 -----------------------------------------------------------------------------*/
 #include <stdio.h>
 #include <stdlib.h>
@@ -227,6 +231,111 @@ malloc_error:
     return NULL;
 }
 
+static void _construct_tree_from_code_lengths(huffman_tree *tree)
+{
+    // we have a tree with a node for every symbol
+    // every node has only the code length and symbol populated
+    // we need to construct the tree from this information
+    // we can do this by sorting the nodes by code length
+    // then we can iterate through the nodes and add them to the tree
+    // we can use the code length to determine where to add the node
+    // if the code length is 0, we add it to the head
+    // if the code length is 1, we add it to the head's child0 or child1
+    // if the code length is 2, we add it to the head's child0's child0 or child1
+    // if the code length is 3, we add it to the head's child0's child0's child0 or child1
+    // etc.
+
+    node *this_node, *next_node, *head;
+    huffman_length *length_tally;
+    list *stack = list_init();
+    huffman_length n, m;
+    uint32_t code;
+    uint32_t next_code[tree->size];
+
+    // TODO: this should be one array with an element for all possible code lengths
+    length_tally = (huffman_length *)calloc(tree->size, sizeof(huffman_length));
+    if (length_tally == NULL)
+        goto malloc_error;
+
+    // sort nodes by code length - ok
+    for (n = 0; n < tree->size; n++)
+    {
+        length_tally[tree->nodes[n]->code_length] += 1;
+        for (m = n; m > 0; m--)
+        {
+            if (tree->nodes[m]->code_length < tree->nodes[m - 1]->code_length)
+            {
+                this_node = tree->nodes[m];
+                tree->nodes[m] = tree->nodes[m - 1];
+                tree->nodes[m - 1] = this_node;
+            }
+        }
+    }
+
+    // calculate next code for each code length
+    length_tally[0] = 0;
+    code = 0;
+    for (uint16_t bit_position = 1; bit_position < sizeof(tree->nodes[0]->code_length); bit_position++)
+    {
+        code = (code + length_tally[bit_position - 1]) << 1;
+        next_code[bit_position] = code;
+    }
+
+    // assign codes to each node
+    for (n = 0; n < tree->size; n++)
+    {
+        this_node = tree->nodes[n];
+        if (this_node->code_length == 0)
+            continue;
+        this_node->code = next_code[this_node->code_length];
+        next_code[this_node->code_length]++;
+    }
+
+    // add nodes to tree - TODO: need to check this, copilot generated
+    for (n = 0; n < tree->size; n++)
+    {
+        this_node = tree->nodes[n];
+        if (this_node->code_length == 0)
+        {
+            tree->head = this_node;
+            continue;
+        }
+        head = tree->head;
+        for (m = 0; m < this_node->code_length - 1; m++)
+        {
+            if (this_node->code & (1 << (this_node->code_length - m - 1)))
+            {
+                if (head->child1 == NULL)
+                {
+                    next_node = _init_node();
+                    head->child1 = next_node;
+                }
+                head = head->child1;
+            }
+            else
+            {
+                if (head->child0 == NULL)
+                {
+                    next_node = _init_node();
+                    head->child0 = next_node;
+                }
+                head = head->child0;
+            }
+        }
+        if (this_node->code & 1)
+            head->child1 = this_node;
+        else
+            head->child0 = this_node;
+    }
+
+    return;
+malloc_error:
+    printf("malloc error\r\n");
+    list_free(stack);
+    // _free_huffman_tree(tree);
+    return;
+}
+
 static void _assign_codes(node *this_node, uint32_t this_code, uint32_t this_code_length)
 {
     if (this_node == NULL)
@@ -337,7 +446,7 @@ huffman_buffer *huffman_compress(huffman_buffer *uncompressed)
     return compressed;
 }
 
-huffman_buffer *huffman_decompress(huffman_buffer *compressed)
+huffman_buffer *huffman_decompress(huffman_buffer *compressed, huffman_tree *tree)
 {
     huffman_buffer *decompressed = (huffman_buffer *)malloc(sizeof(huffman_buffer));
     if (decompressed == NULL)
