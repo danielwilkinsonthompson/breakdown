@@ -17,4 +17,13 @@ typedef struct buffer_t
     uint8_t *data;
 } buffer;
 
+#define buffer_invalid(buf) ((buf) == NULL || (buf)->data == NULL || (buf)->length == 0)
+
+buffer *buffer_init(size_t length);
+buffer *buffer_copy(buffer *buf);
+buffer *buffer_item(buffer *buf, size_t index);
+buffer *buffer_concatenate(buffer *buf, buffer *buf2);
+void buffer_free(buffer *buf);
+void buffer_print(buffer *buf);
+
 #endif

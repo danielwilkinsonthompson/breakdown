@@ -28,13 +28,17 @@ TODO:
 #include <stdlib.h>  // malloc, free
 #include "image.h"   // image
 #include "endian.h"  // endian
-#include "error.h"
-#include "png.h" // png
+#include "error.h"   // error
+#include "deflate.h" // compression
+#include "crc.h"     // crc
+#include "buffer.h"  // compression
+#include "hexdump.h" // debug
+#include "png.h"     // png
 
 /*----------------------------------------------------------------------------
   private macros
 -----------------------------------------------------------------------------*/
-// #define DEBUG
+#define DEBUG
 
 #define PNG_SIGNATURE_LENGTH 8
 #define png_invalid(img) ((img == NULL) || (img->header == NULL))
@@ -135,8 +139,13 @@ typedef enum png_colour_type_t
 
 typedef enum compression_method_t
 {
-  deflate = 0
+  deflate_compression = 0
 } compression_method;
+
+typedef enum filter_method_t
+{
+  adaptive_filtering = 0
+} filter_method;
 
 typedef struct png_deflate_t
 {
@@ -144,11 +153,6 @@ typedef struct png_deflate_t
   uint8_t flg;   // flags
   uint8_t *data; // compressed data
 } png_deflate;
-
-typedef enum filter_method_t
-{
-  adaptive_filtering = 0
-} filter_method;
 
 typedef enum interlace_method_t
 {
@@ -173,10 +177,7 @@ typedef struct png_plte_t
 } png_plte;
 // there must not be more than one PLTE chunk
 
-typedef struct png_idat_t
-{
-  uint8_t *data; // compressed data
-} png_idat;
+typedef buffer png_idat;
 // multiple IDAT chunks may appear, but they must appear contiguously
 
 typedef struct png_iend_t
@@ -216,24 +217,26 @@ typedef struct png_t
   uint8_t signature[PNG_SIGNATURE_LENGTH]; // signature[2], file_size[4], reserved[4], data_offset[4]
   png_header *header;
   image_pixel *colour_table;
+  size_t colour_table_size;
+  deflate_blocks *compressed_blocks;
   image *image;
 } png;
 
 /*----------------------------------------------------------------------------
   private globals
 -----------------------------------------------------------------------------*/
-bool _crc_table_generated = false;
-uint32_t crc_table[256];
-const uint32_t crc_polynomial = 0xEDB88320;
+// bool _crc_table_generated = false;
+// uint32_t crc_table[256];
+// const uint32_t crc_polynomial = 0xEDB88320;
 const uint32_t crc_initial = 0xFFFFFFFF;
 const uint8_t png_signature[PNG_SIGNATURE_LENGTH] = {137, 80, 78, 71, 13, 10, 26, 10};
 
 /*----------------------------------------------------------------------------
   private funcs
 -----------------------------------------------------------------------------*/
-static bool _check_crc(png_chunk *chunk);
-static void _generate_crc_table(void);
-uint32_t update_crc(uint32_t crc, uint8_t *buf, size_t len);
+// static bool _check_crc(png_chunk *chunk);
+// static void _generate_crc_table(void);
+// uint32_t update_crc(uint32_t crc, uint8_t *buf, size_t len);
 static png_chunk *_get_chunk(png *img);
 static error _process_ihdr(png *img, png_chunk *chunk);
 static error _process_idat(png *img, png_chunk *chunk);
@@ -249,7 +252,9 @@ static png_chunk *_get_chunk(png *img)
 {
   png_chunk_header *chunk_header = NULL;
   png_chunk *chunk = NULL;
-  uint8_t crc[4];
+  // uint8_t crc[4];
+  buffer *buf = (buffer *)malloc(sizeof(buffer));
+  uint32_t crc;
 
   // check whether image is valid
   if (png_invalid(img) || img->file == NULL)
@@ -282,16 +287,40 @@ static png_chunk *_get_chunk(png *img)
   //   printf("chunk->data read %zu bytes\n", count);
 
   // read crc and cross-check against calculated crc
-  count = fread(crc, sizeof(uint8_t), sizeof(crc) / sizeof(uint8_t), img->file);
-  if (count != (sizeof(crc) / sizeof(uint8_t)))
+  count = fread(&crc, sizeof(uint8_t), sizeof(crc), img->file);
+  if (count != (sizeof(crc)))
     goto io_error;
-  chunk->crc = _big_endian_to_uint32_t(crc);
-  if (_check_crc(chunk) == false)
+
+  chunk->crc = byte_swap_32(crc);
+  // if (_check_crc(chunk) == false)
+  //   printf("crc check internal\n");
+  // goto io_error;
+  // else
+  //   printf("crc check passed\n");
+
+  // #if 0
+  // chunk->type = byte_swap_32(chunk->type);
+  // (uint8_t *)&chunk_type
+  buf->data = chunk->data;
+  buf->length = chunk->length;
+  //+sizeof(chunk->type);
+  buffer *type_header = buffer_init(4);
+  type_header->data[0] = chunk_header->type[0];
+  type_header->data[1] = chunk_header->type[1];
+  type_header->data[2] = chunk_header->type[2];
+  type_header->data[3] = chunk_header->type[3];
+  crc = crc32_update(crc_initial, type_header);
+  crc = crc32_update(crc, buf);
+  crc = crc32_finalize(crc);
+
+  if (chunk->crc != crc)
     goto io_error;
-#ifdef DEBUG
-  else
-    printf("crc check passed\n");
-#endif
+  // chunk->type = byte_swap_32(chunk->type);
+  // #endif
+
+  // #ifdef DEBUG
+  //   else printf("crc check passed\n");
+  // #endif
 
   return chunk;
 
@@ -340,6 +369,25 @@ image *png_read(const char *filename)
   if (status != success)
     goto io_error;
 
+  img->compressed_blocks = (deflate_blocks *)malloc(sizeof(deflate_blocks));
+  if (img->compressed_blocks == NULL)
+    goto memory_error;
+
+  // also need to allocate img->compressed_blocks->block[] array
+
+  img->compressed_blocks->block = (deflate_block **)malloc(sizeof(deflate_block *) * 100);
+  if (img->compressed_blocks->block == NULL)
+    goto memory_error;
+
+  for (uint8_t i = 0; i < 100; i++)
+  {
+    img->compressed_blocks->block[i] = (deflate_block *)malloc(sizeof(deflate_block));
+    if (img->compressed_blocks->block[i] == NULL)
+      goto memory_error;
+  }
+
+  img->compressed_blocks->size = 0;
+
   img->image = image_init(height, width);
 
   while ((chunk != NULL) && (chunk->type != IEND))
@@ -363,6 +411,18 @@ image *png_read(const char *filename)
     if (status != success)
       goto io_error;
   }
+
+  printf("finished reading file\n");
+
+  for (uint8_t i = 0; i < img->compressed_blocks->size; i++)
+  {
+    printf("img->compressed_blocks->block[%d]->length: %zu\n", i, img->compressed_blocks->block[i]->length);
+    free(img->compressed_blocks->block[i]);
+  }
+  if ((img->compressed_blocks->block != NULL) && (img->compressed_blocks->size == 1))
+  {
+  }
+  // free(img->compressed_blocks->block);
 
   return img->image;
 
@@ -407,17 +467,34 @@ io_error:
 static error _process_idat(png *img, png_chunk *chunk)
 {
   png_idat *idat;
+  buffer *decompressed;
 
   if (chunk->type == IDAT) // IDAT
-    idat = (png_idat *)chunk->data;
+  {
+    idat->data = (uint8_t *)chunk->data;
+    idat->length = chunk->length;
+  }
   else
     goto io_error;
+
+  // note that a single filter-type byte is prepended to each scanline
+  // this seems like it is 0x78, which is the zlib compression method
+  printf("idat->length: %zu\n", idat->length);
+  // add idat block to blocks, decompress all at the end
+  printf("img->compressed_blocks->size: %zu\n", img->compressed_blocks->size);
+  printf("img->compressed_blocks->block[img->compressed_blocks->size]->length: %zu\n", img->compressed_blocks->block[img->compressed_blocks->size]->length);
+  img->compressed_blocks->block[img->compressed_blocks->size]->data = chunk->data;
+  img->compressed_blocks->block[img->compressed_blocks->size]->length = chunk->length;
+  img->compressed_blocks->size++;
+
+  hexdump(stderr, idat->data, idat->length);
 
   return success;
 
 io_error:
   return io_error;
 }
+
 static error _process_plte(png *img, png_chunk *chunk)
 {
   png_plte *plte;
@@ -426,6 +503,11 @@ static error _process_plte(png *img, png_chunk *chunk)
     plte = (png_plte *)chunk->data;
   else
     goto io_error;
+
+  // img->colour_table = (image_pixel *)malloc(sizeof(image_pixel) * chunk->length / sizeof(image_pixel));
+  img->colour_table = (image_pixel *)chunk->data;
+  img->colour_table_size = chunk->length / sizeof(image_pixel);
+  printf("img->colour_table_size: %zu\n", img->colour_table_size);
 
   return success;
 
@@ -470,47 +552,54 @@ io_error:
   return io_error;
 }
 
-static void _generate_crc_table(void)
-{
-  uint32_t crc;
+// static void _generate_crc_table(void)
+// {
+//   uint32_t crc;
 
-  for (uint16_t byte_value = 0; byte_value < 256; byte_value++)
-  {
-    crc = (uint32_t)byte_value;
-    for (uint8_t bit_index = 0; bit_index < 8; bit_index++)
-      crc = (crc & 1) ? (crc_polynomial ^ (crc >> 1)) : (crc >> 1);
+//   for (uint16_t byte_value = 0; byte_value < 256; byte_value++)
+//   {
+//     crc = (uint32_t)byte_value;
+//     for (uint8_t bit_index = 0; bit_index < 8; bit_index++)
+//       crc = (crc & 1) ? (crc_polynomial ^ (crc >> 1)) : (crc >> 1);
 
-    crc_table[byte_value] = crc;
-  }
-  _crc_table_generated = true;
-}
+//     crc_table[byte_value] = crc;
+//   }
+//   _crc_table_generated = true;
+// }
 
-uint32_t update_crc(uint32_t crc, uint8_t *buf, size_t len)
-{
-  if (!_crc_table_generated)
-    _generate_crc_table();
+// uint32_t update_crc(uint32_t crc, uint8_t *buf, size_t len)
+// {
+//   if (!_crc_table_generated)
+//     _generate_crc_table();
 
-  for (uint16_t n = 0; n < len; n++)
-    crc = crc_table[(crc ^ buf[n]) & 0xff] ^ (crc >> 8);
+//   for (uint16_t n = 0; n < len; n++)
+//     crc = crc_table[(crc ^ buf[n]) & 0xff] ^ (crc >> 8);
 
-  return crc;
-}
+//   return crc;
+// }
 
-static bool _check_crc(png_chunk *chunk)
-{
-  uint8_t chunk_type[4];
+// static bool _check_crc(png_chunk *chunk)
+// {
+//   // uint8_t chunk_type[4];
+//   uint32_t chunk_type;
+//   buffer *buf;
 
-  chunk_type[0] = (chunk->type >> 24);
-  chunk_type[1] = (chunk->type >> 16);
-  chunk_type[2] = (chunk->type >> 8);
-  chunk_type[3] = (chunk->type);
+//   // buf = (buffer *)malloc(sizeof(buffer));
+//   // chunk_type[0] = (chunk->type >> 24);
+//   // chunk_type[1] = (chunk->type >> 16);
+//   // chunk_type[2] = (chunk->type >> 8);
+//   // chunk_type[3] = (chunk->type);
+//   chunk_type = byte_swap_32(chunk->type);
 
-  uint32_t crc = update_crc(crc_initial, chunk_type, sizeof(chunk->type));
-  crc = update_crc(crc, chunk->data, chunk->length);
-  crc ^= 0xffffffffL;
+//   // uint32_t crc = update_crc(crc_initial, (uint8_t *)&chunk_type, sizeof(chunk->type));
+//   // crc = update_crc(crc, chunk->data, chunk->length);
+//   uint32_t crc = update_crc(crc_initial, chunk->data, chunk->length);
+//   crc ^= 0xffffffffL;
 
-  return crc == chunk->crc;
-}
+//   printf("chunk->crc = %08x crc = %08x\n", chunk->crc, crc);
+
+//   return crc == chunk->crc;
+// }
 
 void png_write(image *img, const char *filename)
 {
