@@ -22,6 +22,7 @@ set(breakdown_src
     include/array2d.h    
     include/bmp.h
     include/bits.h
+    include/bit_buffer.h
     include/buffer.h
     include/csv.h
     include/deflate.h
@@ -42,8 +43,9 @@ set(breakdown_src
     src/compression/huffman.c
     src/compression/rle.c
     src/data/array2d.c
-    src/data/dictionary.c
+    src/data/bit_buffer.c
     src/data/buffer.c
+    src/data/dictionary.c
     src/data/list.c
     src/ecc/crc.c
     src/file/bmp.c
