@@ -12,38 +12,62 @@ references:
 #define __huffman_h
 #include <stdio.h>
 #include <stdlib.h>
+#include "buffer.h"
 
-typedef uint32_t huffman_data;
-typedef uint32_t huffman_length;
-typedef struct huffman_buffer_t
+// typedef uint32_t huffman_data;
+// typedef uint32_t huffman_length;
+// typedef struct huffman_buffer_t
+// {
+//   huffman_length length;
+//   huffman_data *data;
+// } huffman_buffer;
+
+typedef enum huffman_type_t
 {
-    huffman_length length;
-    huffman_data *data;
-} huffman_buffer;
+  BLOCK_TYPE_UNCOMPRESSED = 0,
+  BLOCK_TYPE_FIXED_HUFFMAN = 1,
+  BLOCK_TYPE_DYNAMIC_HUFFMAN = 2,
+} huffman_type;
 
 /*----------------------------------------------------------------------------
-  buffer_init
+  huffman_tree
   ----------------------------------------------------------------------------
-  create a buffer
-  length : length of buffer
+  generate huffman trees
 -----------------------------------------------------------------------------*/
-huffman_buffer *huffman_buffer_init(huffman_length length);
+// typedef struct node_t node;
+// typedef struct huffman_tree_t
+// {
+//   size_t size;
+//   node *head;
+//   node **nodes;
+// } huffman_tree;
+
+// typedef struct huffman_trees_t
+// {
+//   huffman_tree *literal;
+//   huffman_tree *distance;
+// } huffman_trees;
+
+// huffman_trees *huffman_trees_fixed();
+// huffman_trees *huffman_trees_dynamic(buffer *compressed);
 
 /*----------------------------------------------------------------------------
   compress
   ----------------------------------------------------------------------------
-  compress a buffer of data using huffman encoding
+  compress a buffer using either fixed or dynamic huffman encoding
   uncompressed  : uncompressed data
+  type          : type of huffman encoding to use
   returns       : compressed data
 -----------------------------------------------------------------------------*/
-huffman_buffer *huffman_compress(huffman_buffer *uncompressed);
+buffer *huffman_compress(buffer *uncompressed, huffman_type type);
 
 /*----------------------------------------------------------------------------
   decompress
   ----------------------------------------------------------------------------
-  decompress a buffer of huffman encoded data
+  decompress a buffer using either fixed or dynamic huffman encoding
   compressed  : compressed data
+  type        : type of huffman encoding used
   returns     : decompressed data
 -----------------------------------------------------------------------------*/
-huffman_buffer *huffman_decompress(huffman_buffer *compressed);
+buffer *huffman_decompress(buffer *compressed, huffman_type type);
 #endif
