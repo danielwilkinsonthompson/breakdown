@@ -9,10 +9,14 @@ daniel@wilkinson-thompson.com
 
 #include "error.h"
 
-char *error_message(error e)
+const char *error_message(error e)
 {
     switch (e)
     {
+    case buffer_underflow:
+        return "Buffer underflow";
+    case warning:
+        return "Warning";
     case success:
         return "No error";
     case unspecified_error:
