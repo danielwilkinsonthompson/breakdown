@@ -13,24 +13,27 @@ References
 #define __deflate_h
 #include <stdint.h>
 #include "buffer.h"
+#include "error.h"
+#include "stream.h"
 
 /*----------------------------------------------------------------------------
   deflate
   ----------------------------------------------------------------------------
   compresses a buffer using the deflate algorithm
-  data     :  uncompressed data
-  returns  :  compressed data
+  uncompressed  :  uncompressed data
+  compressed    :  compressed data
+  returns       :  error
 -----------------------------------------------------------------------------*/
-buffer *deflate(buffer *data);
+error deflate(stream *uncompressed, stream *compressed);
 
 /*----------------------------------------------------------------------------
   inflate
   ----------------------------------------------------------------------------
   decompresses a buffer using the deflate algorithm
-  zdata    :  compressed data
-  inflated_size :  size of uncompressed data
-  returns  :  uncompressed data
+  compressed    :  compressed data
+  decompressed  :  decompressed data
+  returns       :  error
 -----------------------------------------------------------------------------*/
-buffer *inflate(buffer *zdata, size_t inflated_size);
+error inflate(stream *compressed, stream *decompressed);
 
 #endif

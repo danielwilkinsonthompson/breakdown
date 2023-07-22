@@ -11,6 +11,7 @@ daniel@wilkinson-thompson.com
 
 typedef enum error_t
 {
+    null_pointer_error = -10,
     io_error = -6,
     index_error = -5,
     type_error = -4,
@@ -31,5 +32,15 @@ typedef enum error_t
     returns : a string representation of the error
 -----------------------------------------------------------------------------*/
 const char *error_message(error e);
+
+/*-----------------------------------------------------------------------------
+    error_print
+-------------------------------------------------------------------------------
+    prints the error plus a custom message to stderr
+    message : the custom error message
+---
+    returns : the original error code
+-----------------------------------------------------------------------------*/
+error *error_print(error e, const char *message);
 
 #endif
