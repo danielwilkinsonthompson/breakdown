@@ -22,7 +22,6 @@ set(breakdown_src
     include/array2d.h    
     include/bmp.h
     include/bits.h
-    include/bit_buffer.h
     include/buffer.h
     include/csv.h
     include/deflate.h
@@ -31,22 +30,23 @@ set(breakdown_src
     include/frame.h
     include/gz.h
     include/hexdump.h
-    include/huffman.h
+    # include/huffman.h
     include/image.h
     include/list.h
     include/png.h
     include/rle.h
+    include/stream.h
     include/vector.h
     # include/zip.h
     src/analysis/vector.c
     src/compression/deflate.c
-    src/compression/huffman.c
+    # src/compression/huffman.c
     src/compression/rle.c
     src/data/array2d.c
-    src/data/bit_buffer.c
     src/data/buffer.c
     src/data/dictionary.c
     src/data/list.c
+    src/data/stream.c
     src/ecc/crc.c
     src/file/bmp.c
     src/file/csv.c
@@ -77,9 +77,13 @@ add_executable(dictionary_test test/data/dictionary_test.c)
 target_include_directories(dictionary_test PRIVATE "${CMAKE_CURRENT_LIST_DIR}/include")
 target_link_libraries(dictionary_test PRIVATE breakdown)
 
+# data/stream
+add_executable(stream_test test/data/stream_test.c)
+target_link_libraries(stream_test PRIVATE breakdown)
+
 # compression/huffman
-add_executable(huffman_test test/compression/huffman_test.c)
-target_link_libraries(huffman_test PRIVATE breakdown)
+# add_executable(huffman_test test/compression/huffman_test.c)
+# target_link_libraries(huffman_test PRIVATE breakdown)
 
 # compression/gz
 add_executable(gz_test test/compression/gz_test.c)

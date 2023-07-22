@@ -42,7 +42,7 @@ uint16_t crc16_finalize(uint16_t crc)
     return crc ^ 0xffff;
 }
 
-uint16_t crc16(buffer *buf)
+uint16_t calculate_crc16(buffer *buf)
 {
     const uint16_t crc16_initial = 0xffff;
 
@@ -87,7 +87,7 @@ uint32_t crc32_finalize(uint32_t crc)
     return crc ^ 0xffffffffL;
 }
 
-uint32_t crc32(buffer *buf)
+uint32_t calculate_crc32(buffer *buf)
 {
     const uint32_t crc32_initial = 0xffffffffL;
 

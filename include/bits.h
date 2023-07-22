@@ -1,7 +1,6 @@
 
-#pragma once
-#ifndef _BITS_H
-#define _BITS_H
+#ifndef __bits_h
+#define __bits_h
 #include <stdint.h>
 
 uint8_t flip_uint8_t(uint8_t x);
