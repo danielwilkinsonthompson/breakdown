@@ -213,6 +213,9 @@ void stream_print(stream *s)
     fprintf(stderr, " - head: %p.%d\n", s->head.byte, s->head.bit);
     fprintf(stderr, " - tail: %p.%d\n", s->tail.byte, s->tail.bit);
     fprintf(stderr, " - contents:\n");
+    fprintf(stderr, " - remaining:\n");
+    hexdump(stderr, (const void *)s->head.byte, s->length);
+    fprintf(stderr, " - whole stream:\n");
     hexdump(stderr, (const void *)s->data, s->capacity);
 }
 

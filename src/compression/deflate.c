@@ -28,6 +28,48 @@ References
 #define DISTANCE_TREE_SIZE 30
 #define DISTANCE_SYMBOL_BITS 15 // [0..32768]
 
+const uint8_t length_extra_bits[30] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 1, // 257..265
+    1, 1, 1, 2, 2, 2, 3, 3, 3, // 266..274
+    4, 4, 5, 5, 6, 6, 7, 7, 8, // 275..283
+    9, 10, 11                  // 284..285
+};
+
+const uint16_t length_base[30] = {
+    3, 4, 5, 6, 7, 8, 9, 10, 11,            // 257..265
+    13, 15, 17, 19, 23, 27, 31, 35, 43,     // 266..274
+    51, 59, 67, 83, 99, 115, 131, 163, 195, // 275..283
+    227, 258                                // 284..285
+};
+
+const uint8_t distance_extra_bits[30] = {
+    0, 0, 0, 0, 1, 1, 2, 2, 3,      // 0..9
+    3, 4, 4, 5, 5, 6, 6, 7, 7,      // 10..19
+    8, 8, 9, 9, 10, 10, 11, 11, 12, // 20..29
+    12, 13, 13                      // 30..31
+};
+
+const uint16_t distance_base[30] = {
+    1, 2, 3, 4, 5, 7, 9, 13, 17,                        // 0..9
+    25, 33, 49, 65, 97, 129, 193, 257, 385,             // 10..19
+    513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, // 20..29
+    12289, 16385, 24577                                 // 30..31
+};
+
+// fixed tree literal code ranges
+//    Value: Bits:                 Code:                    8-bit code:
+//   0..143: 8 bits (0x00..0x8f)   0b00110000 ..0b10111111  0x30..0xbf
+// 144..255: 9 bits (0x90..0xff)   0b110010000..0b111111111 0xc8..0xff
+// 256..279: 7 bits (0x100..0x11b) 0b0000000  ..0b0010111   0x00..0x2f
+// 280..287: 8 bits (0x11c..0x12f) 0b11000000 ..0b11000111  0xc0..0xc7
+#define fixed_literal_7bit_maximum 0x2f
+#define fixed_literal_8bit_minimum 0x30
+#define fixed_literal_8bit_maximum 0xbf
+#define fixed_literal_9bit_minimum 0xc8
+
+// fixed tree distance code ranges
+// 0..31: 5 bits (0x00..0x1f) 0b00000..0b11111
+
 typedef struct node_t
 {
   uint32_t value;
@@ -150,7 +192,7 @@ error deflate(stream *uncompressed, stream *compressed)
   return success;
 
 io_error:
-  printf("defalte.c : deflate() : io_error\r\n");
+  printf("deflate.c - deflate() : io_error\r\n");
 
   return io_error;
 }
@@ -175,11 +217,10 @@ error inflate(stream *compressed, stream *decompressed)
     case block_type_uncompressed:
       printf("uncompressed_block\n");
 
-      // pull remaining 5 bits of block header (actually need to align to next byte)
+      // TODO: pull remaining 5 bits of block header (actually need to align to next byte)
       uint8_t *unused_bits = stream_read_bits(compressed, 5, true);
       free(unused_bits);
 
-      // TODO: investigate this -- I think bytes should come out in network order?!
       uint8_t *raw_header = stream_read_bytes(compressed, 4, true);
       uint16_t len = (*raw_header << 8) | *(raw_header + 1);
       uint16_t nlen = (*(raw_header + 2) << 8) | *(raw_header + 3);
@@ -199,7 +240,7 @@ error inflate(stream *compressed, stream *decompressed)
 
       break;
     case block_type_fixed_huffman:
-      // printf("fixed_huffman_block\n");
+      printf("fixed_huffman_block\n");
       trees = _init_fixed_huffman_trees();
       if (trees == NULL)
         goto malloc_error;
@@ -229,18 +270,38 @@ error inflate(stream *compressed, stream *decompressed)
       //   jump back in output stream by 'distance' and copy 'length' bytes to output
       // end if
 
-      // TODO: Can't pull a whole byte if next code is 7 bits
-      uint8_t *code = stream_read_bytes(compressed, 1, true);
+      uint8_t *raw_data = stream_read_bytes(compressed, 1, true);
+      if (raw_data == NULL)
+        goto io_error;
+
+      uint32_t literal_code = *raw_data;
       // printf("raw_data: %x\n", *code);
+      free(raw_data);
+
+      // Any code <= 0x2f is actually 7 bits, write 8th bit back to stream
+      if ((literal_code) <= fixed_literal_7bit_maximum)
+      {
+        uint8_t code_lsb = (uint8_t)literal_code & 0x01;
+        literal_code = literal_code >> 1;
+        stream_write_bits(compressed, &code_lsb, 1, false);
+      }
+
+      // Any code >= 0xc8 is actually 9 bits, pull 9th bit from stream
+      if ((literal_code) >= fixed_literal_9bit_minimum)
+      {
+        uint8_t *code_lsb = stream_read_bits(compressed, 1, true);
+        literal_code = (literal_code << 1) | *code_lsb;
+        free(code_lsb);
+      }
 
       uint32_t code_length;
-      uint32_t value = huffman_decode(trees->literal, *code, &code_length);
-      // printf("value: 0x%02x code_length: %u\n", value, code_length);
-      if (value < 256)
+      uint32_t literal_value = huffman_decode(trees->literal, literal_code, &code_length);
+      // printf("literal_code: 0x%02x literal_value: 0x%02x code_length: %u\n", literal_code, literal_value, code_length);
+
+      if (literal_value < 256)
       {
         // printf("writing value %c to decompressed stream\n", value);
-        uint8_t value_byte = (uint8_t)value;
-        // FIXME: stream_write_bits function erroneously sets length to 2 after writing 1 byte
+        uint8_t value_byte = (uint8_t)literal_value;
         size_t bytes_written = stream_write_bytes(decompressed, &value_byte, 1, false);
         if (bytes_written != 1)
         {
@@ -250,51 +311,52 @@ error inflate(stream *compressed, stream *decompressed)
           goto io_error;
         }
       }
-      else if (value == 256)
+      else if (literal_value == 256)
         break;
       else
-      { // TODO: length_extra_bits not defined
-        // TODO: length_base not defined
-        // TODO: distance_extra_bits not defined
-        // TODO: distance_base not defined
+      {
+        // printf("value: %u\n", value);
         // printf("value: %x\n", value);
-        // uint32_t length = value - 257;
-        // uint32_t extra_bits = length_extra_bits[length];
-        // uint32_t extra_length = 0;
-        // if (extra_bits > 0)
-        // {
-        //   uint8_t *extra = stream_read_bits(compressed, extra_bits, true);
-        //   extra_length = *extra;
-        //   free(extra);
-        // }
-        // length = length_base[length] + extra_length;
+        uint32_t length = (literal_value - 257) % 30;
+        uint32_t extra_bits = length_extra_bits[length];
+        uint32_t extra_length = 0;
+        if (extra_bits > 0)
+        {
+          uint8_t *extra = stream_read_bits(compressed, extra_bits, true);
+          extra_length = *extra;
+          free(extra);
+        }
+        length = length_base[length] + extra_length;
         // printf("length: %u\n", length);
 
-        // code = stream_read_bytes(compressed, 1, true);
-        // printf("raw_data: %x\n", *code);
-
-        // uint32_t distance = huffman_decode(trees->distance, *code, &code_length);
-        // printf("distance: %u code_length: %u\n", distance, code_length);
-        // uint32_t extra_distance = 0;
-        // extra_bits = distance_extra_bits[distance];
-        // if (extra_bits > 0)
-        // {
-        //   uint8_t *extra = stream_read_bits(compressed, extra_bits, true);
-        //   extra_distance = *extra;
-        //   free(extra);
-        // }
-        // distance = distance_base[distance] + extra_distance;
+        uint8_t *distance_code = stream_read_bits(compressed, 5, true);
+        uint32_t distance = huffman_decode(trees->distance, *distance_code, &code_length);
+        // printf("distance_code: 0x%02x value: 0x%02x code_length: %u\n", *distance_code, distance, code_length);
+        uint32_t extra_distance = 0;
+        extra_bits = distance_extra_bits[distance];
+        if (extra_bits > 0)
+        {
+          uint8_t *extra = stream_read_bits(compressed, extra_bits, true);
+          extra_distance = *extra;
+          free(extra);
+        }
+        distance = distance_base[distance] + extra_distance;
         // printf("distance: %u\n", distance);
+        free(distance_code);
 
-        // err = stream_write_bytes(decompressed, (uint8_t *)&value, 1, false);
-        // if (err != success)
-        // {
-        //   printf("error writing to decompressed stream\n");
-        //   goto io_error;
-        // }
+        while (length > 0)
+        {
+          uint8_t *byte_value = (decompressed->tail.byte - distance);
+
+          size_t bytes_written = stream_write_bytes(decompressed, byte_value, 1, false);
+          if (bytes_written != 1)
+          {
+            printf("error writing to decompressed stream\n");
+            goto io_error;
+          }
+          length--;
+        }
       }
-
-      free(code);
     }
 
   } while ((header->final == 0) && (compressed->length > 0) && (err == success));
