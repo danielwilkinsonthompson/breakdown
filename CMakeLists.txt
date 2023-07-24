@@ -38,10 +38,12 @@ set(breakdown_src
     include/stream.h
     include/vector.h
     # include/zip.h
+    include/zlib.h
     src/analysis/vector.c
     src/compression/deflate.c
     # src/compression/huffman.c
     src/compression/rle.c
+    src/compression/zlib.c
     src/data/array2d.c
     src/data/buffer.c
     src/data/dictionary.c
