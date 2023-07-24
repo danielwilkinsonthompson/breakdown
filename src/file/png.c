@@ -18,9 +18,6 @@ references:
 - [1] http://www.libpng.org/pub/png/spec/1.2/png-1.2.pdf
 - [2] http://pnrsolution.org/Datacenter/Vol4/Issue1/58.pdf
 
-TODO:
-- break crc out to separate file
-- break out deflate to separate file
 -----------------------------------------------------------------------------*/
 #include <stdio.h>   // fprintf, stderr
 #include <stdint.h>  // uint8_t, uint16_t, uint32_t
@@ -34,6 +31,9 @@ TODO:
 #include "buffer.h"  // compression
 #include "hexdump.h" // debug
 #include "png.h"     // png
+#include "stream.h"  // stream
+#include "zlib.h"    // compression
+// #include "deflate.h" // compression
 
 /*----------------------------------------------------------------------------
   private macros
@@ -99,7 +99,7 @@ typedef enum chunk_types_t
 typedef struct png_chunk_t
 {
   uint32_t length; // chunk length, must not exceed 2**31-1 bytes
-  uint32_t type;   // size of file in bytes
+  uint32_t type;   // chunk type
   uint8_t *data;   // bytes of chunk data
   uint32_t crc;    // crc of chunk data including type and data fields, but not length field
 } png_chunk;
@@ -107,7 +107,7 @@ typedef struct png_chunk_t
 typedef struct png_chunk_header_t
 {
   uint8_t length[4]; // chunk length big-endian
-  uint8_t type[4];   // size of file in bytes
+  uint8_t type[4];   // chunk type
 } png_chunk_header;
 
 typedef struct png_ihdr_t
@@ -218,7 +218,7 @@ typedef struct png_t
   png_header *header;
   image_pixel *colour_table;
   size_t colour_table_size;
-  deflate_blocks *compressed_blocks;
+  // deflate_blocks *compressed_blocks;
   image *image;
 } png;
 
@@ -369,24 +369,24 @@ image *png_read(const char *filename)
   if (status != success)
     goto io_error;
 
-  img->compressed_blocks = (deflate_blocks *)malloc(sizeof(deflate_blocks));
-  if (img->compressed_blocks == NULL)
-    goto memory_error;
+  // img->compressed_blocks = (deflate_blocks *)malloc(sizeof(deflate_blocks));
+  // if (img->compressed_blocks == NULL)
+  //   goto memory_error;
 
   // also need to allocate img->compressed_blocks->block[] array
 
-  img->compressed_blocks->block = (deflate_block **)malloc(sizeof(deflate_block *) * 100);
-  if (img->compressed_blocks->block == NULL)
-    goto memory_error;
+  // img->compressed_blocks->block = (deflate_block **)malloc(sizeof(deflate_block *) * 100);
+  // if (img->compressed_blocks->block == NULL)
+  //   goto memory_error;
 
   for (uint8_t i = 0; i < 100; i++)
   {
-    img->compressed_blocks->block[i] = (deflate_block *)malloc(sizeof(deflate_block));
-    if (img->compressed_blocks->block[i] == NULL)
-      goto memory_error;
+    // img->compressed_blocks->block[i] = (deflate_block *)malloc(sizeof(deflate_block));
+    // if (img->compressed_blocks->block[i] == NULL)
+    //   goto memory_error;
   }
 
-  img->compressed_blocks->size = 0;
+  // img->compressed_blocks->size = 0;
 
   img->image = image_init(height, width);
 
@@ -414,14 +414,14 @@ image *png_read(const char *filename)
 
   printf("finished reading file\n");
 
-  for (uint8_t i = 0; i < img->compressed_blocks->size; i++)
-  {
-    printf("img->compressed_blocks->block[%d]->length: %zu\n", i, img->compressed_blocks->block[i]->length);
-    free(img->compressed_blocks->block[i]);
-  }
-  if ((img->compressed_blocks->block != NULL) && (img->compressed_blocks->size == 1))
-  {
-  }
+  // for (uint8_t i = 0; i < img->compressed_blocks->size; i++)
+  // {
+  //   printf("img->compressed_blocks->block[%d]->length: %zu\n", i, img->compressed_blocks->block[i]->length);
+  //   free(img->compressed_blocks->block[i]);
+  // }
+  // if ((img->compressed_blocks->block != NULL) && (img->compressed_blocks->size == 1))
+  // {
+  // }
   // free(img->compressed_blocks->block);
 
   return img->image;
@@ -466,9 +466,12 @@ io_error:
 
 static error _process_idat(png *img, png_chunk *chunk)
 {
-  png_idat *idat;
-  buffer *decompressed;
+  buffer *idat;
+  stream *decompressed;
+  stream *compressed;
+  error status;
 
+  idat = (png_idat *)malloc(sizeof(png_idat));
   if (chunk->type == IDAT) // IDAT
   {
     idat->data = (uint8_t *)chunk->data;
@@ -477,21 +480,47 @@ static error _process_idat(png *img, png_chunk *chunk)
   else
     goto io_error;
 
+  // decompress idat chunk
+  /* Deflate-compressed datastreams within PNG are stored in the "zlib"
+   format, which has the structure:
+
+      Compression method/flags code: 1 byte
+      Additional flags/check bits:   1 byte
+      Compressed data blocks:        n bytes
+      Check value:                   4 bytes
+
+   Further details on this format are given in the zlib specification
+   [RFC1950](https://datatracker.ietf.org/doc/html/rfc1950)
+   */
+
+  compressed = stream_init_from_buffer(idat, false);
+  decompressed = stream_init(32768);
+  status = zlib_decompress(compressed, decompressed);
+
+  // from RFC2083
+  // "Note that with filter method 0, the only one currently defined, this implies prepending a filter type byte to each scanline"
+  // The zlib compression method used in the "deflate" compression method is described in [RFC-1950].
+
   // note that a single filter-type byte is prepended to each scanline
   // this seems like it is 0x78, which is the zlib compression method
   printf("idat->length: %zu\n", idat->length);
   // add idat block to blocks, decompress all at the end
-  printf("img->compressed_blocks->size: %zu\n", img->compressed_blocks->size);
-  printf("img->compressed_blocks->block[img->compressed_blocks->size]->length: %zu\n", img->compressed_blocks->block[img->compressed_blocks->size]->length);
-  img->compressed_blocks->block[img->compressed_blocks->size]->data = chunk->data;
-  img->compressed_blocks->block[img->compressed_blocks->size]->length = chunk->length;
-  img->compressed_blocks->size++;
+  // printf("img->compressed_blocks->size: %zu\n", img->compressed_blocks->size);
+  // printf("img->compressed_blocks->block[img->compressed_blocks->size]->length: %zu\n", img->compressed_blocks->block[img->compressed_blocks->size]->length);
+  // img->compressed_blocks->block[img->compressed_blocks->size]->data = chunk->data;
+  // img->compressed_blocks->block[img->compressed_blocks->size]->length = chunk->length;
+  // img->compressed_blocks->size++;
 
   hexdump(stderr, idat->data, idat->length);
+  hexdump(stderr, decompressed->data, decompressed->length);
+
+  free(idat);
 
   return success;
 
 io_error:
+  printf("png.c _process_idat():  io_error\n");
+  free(idat);
   return io_error;
 }
 
