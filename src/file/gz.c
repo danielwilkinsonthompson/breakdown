@@ -231,6 +231,9 @@ buffer *gz_read(const char *filename)
   if (out == NULL)
     goto memory_error;
 
+  // printf("decompressed length: %zu\n", out->length);
+  // printf("zip->footer.size: %u\n", zip->footer.size);
+  // buffer_print(out);
   uint32_t crc32 = calculate_crc32(out);
   if (crc32 != zip->footer.crc32)
   {

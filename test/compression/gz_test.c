@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
 
     FILE *fp = fopen(output_filename, "w");
 
-    buffer_print(buf);
+    // buffer_print(buf);
     for (size_t i = 0; i < buf->length; i++)
     {
         fprintf(fp, "%c", buf->data[i]);
