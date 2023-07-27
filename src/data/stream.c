@@ -73,6 +73,11 @@ stream *stream_init_from_buffer(buffer *b, bool reverse_bits)
     return s;
 }
 
+// size_t stream_push_bits(stream *s, uint8_t *src_byte, size_t size, bool reverse_bits)
+// {
+
+// }
+
 // write
 size_t stream_write_bits(stream *s, uint8_t *src_byte, size_t size, bool reverse_bits)
 {
@@ -161,7 +166,9 @@ uint8_t *stream_read_bits(stream *s, size_t size, bool reverse_bits)
         if (reverse_bits)
         {
             // do we also want to reverse the byte order?
-            bits[i / 8] |= ((*s->head.byte & (0x01 << s->head.bit)) >> (s->head.bit)) << (7 - (i % 8));
+            // if reading 2 bits from byte 0x01, we want output to be 0x02, not 0x40
+            uint8_t shift_max = size < 8 ? size - 1 : 7;
+            bits[i / 8] |= ((*s->head.byte & (0x01 << s->head.bit)) >> (s->head.bit)) << (shift_max - (i % 8));
         }
         else
         {
