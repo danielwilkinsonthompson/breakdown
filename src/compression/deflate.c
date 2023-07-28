@@ -107,6 +107,7 @@ typedef struct huffman_trees_t
   huffman_tree *distance;
 } huffman_trees;
 
+// see RFC 1951, section 3.2.3
 typedef struct block_header_t
 {
   uint8_t final : 1;
@@ -114,6 +115,7 @@ typedef struct block_header_t
   uint8_t reserved : 5;
 } block_header;
 
+// see RFC 1951, section 3.2.3
 typedef enum block_type_t
 {
   block_type_uncompressed = 0,
@@ -121,13 +123,14 @@ typedef enum block_type_t
   block_type_dynamic_huffman = 2,
 } block_type;
 
+// see RFC 1951, section 3.2.4
 typedef struct uncompressed_block_header_t
 {
   uint16_t length;     // number of bytes in block
   uint16_t not_length; // one's complement of length
 } uncompressed_block_header;
 
-// Block_type = 2: dynamic codes
+// see RFC 1951, section 3.2.7
 typedef struct dynamic_block_header_t
 {
   uint16_t cl_literals;  // number of literal/length codes - 257 [0..256]
@@ -206,25 +209,22 @@ io_error:
   return io_error;
 }
 
-// TODO: Still working on dynamic huffman trees (see: _decode_dynamic_trees())
 error inflate(stream *compressed, stream *decompressed)
 {
   error err = success;
   huffman_trees *trees = NULL;
 
+  // check inputs
   if (compressed == NULL || decompressed == NULL)
     return null_pointer_error;
 
+  // read block header
   block_header *header = (block_header *)stream_read_bits(compressed, 3, false);
   if (header == NULL)
     return io_error;
 
-  uint32_t block_count = 0;
-
   do
   {
-    block_count++;
-    printf("block %d: \n", block_count);
     switch (header->block_type)
     {
     case block_type_uncompressed:
@@ -250,7 +250,6 @@ error inflate(stream *compressed, stream *decompressed)
       free(raw_data);
       if (err != success)
         goto io_error;
-
       break;
 
     case block_type_fixed_huffman:
@@ -258,7 +257,6 @@ error inflate(stream *compressed, stream *decompressed)
       trees = _init_fixed_huffman_trees();
       if (trees == NULL)
         goto malloc_error;
-
       break;
 
     case block_type_dynamic_huffman:
@@ -266,19 +264,16 @@ error inflate(stream *compressed, stream *decompressed)
       trees = _decode_dynamic_trees(compressed);
       if (trees == NULL)
         goto malloc_error;
-
       break;
 
     default:
       printf("unknown_block\n");
       goto io_error;
-      break;
     }
 
-    // decode huffman coded blocks
+    // decode huffman-coded blocks
     while ((compressed->length > 0) && (header->block_type != block_type_uncompressed))
     {
-
       // decode literal/length code
       uint32_t literal_value;
 
@@ -299,7 +294,7 @@ error inflate(stream *compressed, stream *decompressed)
       else if (literal_value == 256)
         break;
 
-      // literal codes [257..285] are length codes, we must decode length and distance
+      // literal codes [257..285] are length codes, next we decode length and distance
       else
       {
         // decode length
@@ -356,6 +351,7 @@ malloc_error:
   return memory_error;
 }
 
+// TODO: replace this with a binary sequence that inflates to the static trees
 static huffman_trees *_init_fixed_huffman_trees(void)
 {
   if (fixed_trees != NULL)
@@ -426,6 +422,8 @@ static error huffman_decode(stream *compressed, huffman_tree *tree, uint32_t *sy
         return success;
       }
     }
+
+    // TODO: implement tree traversal instead of brute force search
 
     // if code is not found, read another bit from the stream
     uint8_t *extra_bits = stream_read_bits(compressed, 1, false);
