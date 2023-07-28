@@ -12,14 +12,12 @@ references
 - https://www.youtube.com/watch?v=SJPvNi4HrWQ
 
 known bugs
-- inflate() does not handle dynamic huffman trees
 - deflate() does not handle static huffman trees
 - deflate() does not handle dynamic huffman trees
 - deflate() does not have an algorithm to determine the appropriate block type
 - huffman_decode() currently based on brute-force search, should be optimized
 
 todo
-- add support for dynamic huffman trees
 - build static huffman tree object that could be decoded in the same way as dynamic trees
 -----------------------------------------------------------------------------*/
 #include <stdint.h>  // uint8_t, uint16_t, uint32_t
@@ -47,6 +45,7 @@ todo
 #define fixed_literal_7bit_maximum 0x2f
 #define fixed_literal_9bit_minimum 0xc8
 
+// see RFC 1951, section 3.2.5
 const uint8_t length_extra_bits[lengths] = {
     0, 0, 0, 0, 0, 0, 0, 0, 1, // 257..265
     1, 1, 1, 2, 2, 2, 3, 3, 3, // 266..274
@@ -54,6 +53,7 @@ const uint8_t length_extra_bits[lengths] = {
     9, 10, 11                  // 284..285
 };
 
+// see RFC 1951, section 3.2.5
 const uint16_t length_base[lengths] = {
     3, 4, 5, 6, 7, 8, 9, 10, 11,            // 257..265
     13, 15, 17, 19, 23, 27, 31, 35, 43,     // 266..274
@@ -61,6 +61,7 @@ const uint16_t length_base[lengths] = {
     227, 258                                // 284..285
 };
 
+// see RFC 1951, section 3.2.5
 const uint8_t distance_extra_bits[distances] = {
     0, 0, 0, 0, 1, 1, 2, 2, 3,      // 0..9
     3, 4, 4, 5, 5, 6, 6, 7, 7,      // 10..19
@@ -68,6 +69,7 @@ const uint8_t distance_extra_bits[distances] = {
     12, 13, 13                      // 30..31
 };
 
+// see RFC 1951, section 3.2.5
 const uint16_t distance_base[distances] = {
     1, 2, 3, 4, 5, 7, 9, 13, 17,                        // 0..9
     25, 33, 49, 65, 97, 129, 193, 257, 385,             // 10..19
@@ -75,6 +77,7 @@ const uint16_t distance_base[distances] = {
     12289, 16385, 24577                                 // 30..31
 };
 
+// see RFC 1951, section 3.2.7
 const uint8_t dynamic_cl_symbol_order[cl_size] = {
     16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 
@@ -216,8 +219,12 @@ error inflate(stream *compressed, stream *decompressed)
   if (header == NULL)
     return io_error;
 
+  uint32_t block_count = 0;
+
   do
   {
+    block_count++;
+    printf("block %d: \n", block_count);
     switch (header->block_type)
     {
     case block_type_uncompressed:
@@ -247,7 +254,7 @@ error inflate(stream *compressed, stream *decompressed)
       break;
 
     case block_type_fixed_huffman:
-      // printf("fixed_huffman_block\n");
+      printf("fixed_huffman_block\n");
       trees = _init_fixed_huffman_trees();
       if (trees == NULL)
         goto malloc_error;
@@ -255,7 +262,7 @@ error inflate(stream *compressed, stream *decompressed)
       break;
 
     case block_type_dynamic_huffman:
-      // printf("dynamic_huffman_block\n");
+      printf("dynamic_huffman_block\n");
       trees = _decode_dynamic_trees(compressed);
       if (trees == NULL)
         goto malloc_error;
@@ -268,54 +275,16 @@ error inflate(stream *compressed, stream *decompressed)
       break;
     }
 
-    // for (size_t n = 0; n < trees->literal->size; n++)
-    // {
-    //   printf("literal[%zu] code,code_length,value %d,%d,%d\r\n", n, trees->literal->nodes[n]->code, trees->literal->nodes[n]->code_length, trees->literal->nodes[n]->value);
-    // }
-    // for (size_t n = 0; n < trees->distance->size; n++)
-    // {
-    //   printf("distance[%zu] code,code_length,value %d,%d,%d\r\n", n, trees->distance->nodes[n]->code, trees->distance->nodes[n]->code_length, trees->distance->nodes[n]->value);
-    // }
-
-    // decode dynamic/fixed huffman blocks
+    // decode huffman coded blocks
     while ((compressed->length > 0) && (header->block_type != block_type_uncompressed))
     {
 
-      // read literal/length code from stream
-      // uint8_t *raw_data = stream_read_bytes(compressed, 1, true);
-      // if (raw_data == NULL)
-      //   goto io_error;
-
-      // uint32_t literal_code = *raw_data;
-      // free(raw_data);
-
-      // // any code <= 0x2f is actually 7 bits, write 8th bit back to stream
-      // if ((literal_code) <= fixed_literal_7bit_maximum)
-      // {
-      //   uint8_t code_lsb = (uint8_t)literal_code & 0x01;
-      //   literal_code = literal_code >> 1;
-      //   stream_write_bits(compressed, &code_lsb, 1, false);
-      // }
-
-      // // any code >= 0xc8 is actually 9 bits, pull 9th bit from stream
-      // if ((literal_code) >= fixed_literal_9bit_minimum)
-      // {
-      //   uint8_t *code_lsb = stream_read_bits(compressed, 1, true);
-      //   literal_code = (literal_code << 1) | *code_lsb;
-      //   free(code_lsb);
-      // }
-
       // decode literal/length code
-      // uint32_t code_length;
       uint32_t literal_value;
 
       err = huffman_decode(compressed, trees->literal, &literal_value);
       if (err != success)
         goto io_error;
-
-      // FIXME: Currently we trip up on any non-literal value in dynamic tree. Is distance being read correctly?
-      // FIXME: Fixed tree does not decode at all!!!
-      // printf("%C", literal_value);
 
       // literal codes [0..255] are literal bytes, just transfer to decompressed stream
       if (literal_value < 256)
@@ -328,11 +297,8 @@ error inflate(stream *compressed, stream *decompressed)
 
       // literal code 256 signifies the end of a block
       else if (literal_value == 256)
-      {
-        // printf("*EOB*\r\n");
-
         break;
-      }
+
       // literal codes [257..285] are length codes, we must decode length and distance
       else
       {
@@ -348,10 +314,8 @@ error inflate(stream *compressed, stream *decompressed)
           free(extra);
         }
         length = length_base[length] + extra_length;
-        // printf("(%d,", length);
 
         // decode distance
-        // uint8_t *distance_code = stream_read_bits(compressed, 5, true);
         uint32_t distance;
         err = huffman_decode(compressed, trees->distance, &distance);
         if (err != success)
@@ -365,7 +329,6 @@ error inflate(stream *compressed, stream *decompressed)
           free(extra);
         }
         distance = distance_base[distance] + extra_distance;
-        // printf("%d)", distance);
 
         // copy length bytes from distance bytes back in the stream
         while (length > 0)
@@ -381,12 +344,7 @@ error inflate(stream *compressed, stream *decompressed)
 
   } while ((header->final == 0) && (compressed->length > 0) && (err == success));
 
-  // printf("\r\n");
-
 close_out:
-  // if (trees != NULL)  // FIXME
-  //   free_huffman_trees(trees);
-
   if (header != NULL)
     free(header);
   return err;
@@ -458,14 +416,12 @@ static error huffman_decode(stream *compressed, huffman_tree *tree, uint32_t *sy
   // loop through possible code lengths
   for (size_t code_length = tree->min_code_length; code_length <= tree->max_code_length; code_length++)
   {
-    // printf("searching for match to %d\r\n", code_buffer);
     // search for code in tree
     for (size_t n = 0; n < tree->size; n++)
     {
       // if code is found, return symbol
       if ((tree->nodes[n]->code == code_buffer) && (tree->nodes[n]->code_length == code_length))
       {
-        // printf("found match to %d\r\n", code_buffer);
         *symbol = tree->nodes[n]->value;
         return success;
       }
@@ -488,7 +444,7 @@ static void _construct_tree_from_code_lengths(huffman_tree *tree)
 {
   node *head, *this_node, *next_node;
 
-  // find maximum code length
+  // find minimum & maximum code length
   uint32_t max_code_length = 0;
   uint32_t min_code_length = 0xffffffff;
   for (size_t n = 0; n < tree->size; n++)
@@ -552,46 +508,12 @@ malloc_error:
 //   return;
 // }
 
-// huffman trees
-// static huffman_trees *_decode_huffman_trees(buffer *compressed)
-// {
-//   huffman_trees *trees = NULL;
-
-//   if (trees == NULL)
-//     goto malloc_error;
-
-//   // block_header deflate_header;
-//   // deflate_header.as_byte = (compressed->data[0]);
-//   // switch (deflate_header.as_bits.block_type)
-//   // {
-//   // case BLOCK_TYPE_UNCOMPRESSED:
-//   //   // nothing to be done, data is not compressed
-//   //   trees = NULL;
-//   // case BLOCK_TYPE_FIXED_HUFFMAN:
-//   //   trees = _init_fixed_huffman_trees();
-//   //   break;
-//   // case BLOCK_TYPE_DYNAMIC_HUFFMAN:
-//   //   trees = _decode_dynamic_trees(compressed);
-//   //   break;
-//   // default:
-//   //   // invalid block type
-//   //   trees = NULL;
-//   // }
-
-//   return trees;
-
-// malloc_error:
-//   _free_huffman_trees(trees);
-//   return NULL;
-// }
-
 static huffman_tree *_decode_cl_tree(stream *compressed, size_t size)
 {
   error err;
 
   // read code-length table from stream
   uint8_t cl_lengths[cl_size];
-
   for (size_t n = 0; n < size; n++)
   {
     uint8_t *cl_length = stream_read_bits(compressed, cl_code_length, false);
@@ -602,7 +524,7 @@ static huffman_tree *_decode_cl_tree(stream *compressed, size_t size)
     free(cl_length);
   }
 
-  // construct huffman tree for code-lengths
+  // construct huffman tree from code-lengths
   huffman_tree *cl_tree = _init_huffman_tree(cl_size);
   if (cl_tree == NULL)
     return NULL;
@@ -614,15 +536,9 @@ static huffman_tree *_decode_cl_tree(stream *compressed, size_t size)
   }
   _construct_tree_from_code_lengths(cl_tree);
 
-  // for (size_t n = 0; n < cl_size; n++)
-  // {
-  //   printf("cl_tree->nodes[%zu]: value,code,code_length = %d,%d,%d\r\n", n, cl_tree->nodes[n]->value, cl_tree->nodes[n]->code, cl_tree->nodes[n]->code_length);
-  // }
-
   return cl_tree;
 }
 
-// TODO: clean this up to accept a number of code lengths, rather than a buffer
 static huffman_tree *_decode_cl_lengths(stream *compressed, huffman_tree *cl_tree, size_t size)
 {
   uint32_t symbol;
@@ -633,9 +549,7 @@ static huffman_tree *_decode_cl_lengths(stream *compressed, huffman_tree *cl_tre
   if (tree == NULL)
     return NULL;
 
-  // uint8_t code_lengths[size];
-  // = (uint8_t *)calloc(size, sizeof(uint8_t));
-
+  // decode code lengths from stream
   for (size_t n = 0; n < size; n++)
   {
     status = huffman_decode(compressed, cl_tree, &symbol);
@@ -657,8 +571,6 @@ static huffman_tree *_decode_cl_lengths(stream *compressed, huffman_tree *cl_tre
         tree->nodes[n + m]->code_length = tree->nodes[n - 1]->code_length;
       }
 
-      // printf("literal_lengths[%zu] through [%zu] set to %d\r\n", n, n + *repeat_count + 2, tree->nodes[n - 1]->code_length);
-
       free(repeat_count);
       n += *repeat_count + 2;
     }
@@ -673,8 +585,6 @@ static huffman_tree *_decode_cl_lengths(stream *compressed, huffman_tree *cl_tre
         tree->nodes[n + m]->value = n + m;
         tree->nodes[n + m]->code_length = 0;
       }
-
-      // printf("literal_lengths[%zu] through [%zu] set to 0\r\n", n, n + *repeat_count + 2);
 
       free(repeat_count);
       n += *repeat_count + 3;
@@ -692,34 +602,23 @@ static huffman_tree *_decode_cl_lengths(stream *compressed, huffman_tree *cl_tre
         tree->nodes[n + m]->code_length = 0;
       }
 
-      // printf("literal_lengths[%zu] through [%zu] set to 0\r\n", n, n + repeats + 10);
-
       free(repeat_count);
       n += repeats + 10;
     }
     else
     {
       tree->nodes[n]->code_length = symbol;
-      // printf("literal_lengths[%zu]: %d\r\n", n, tree->nodes[n]->code_length);
     }
   }
   _construct_tree_from_code_lengths(tree);
-
-  // for (size_t n = 0; n < size; n++)
-  // {
-  //   printf("tree->nodes[%zu]: value,code,code_length = %d,%d,%d\r\n", n, tree->nodes[n]->value, tree->nodes[n]->code, tree->nodes[n]->code_length);
-  // }
 
   return tree;
 
 malloc_error:
 io_error:
   _free_huffman_tree(tree);
-  // _free_huffman_tree(cl_tree);
   return NULL;
 }
-
-// static huffman_tree *_decode_
 
 static huffman_trees *_decode_dynamic_trees(stream *compressed)
 {
@@ -743,43 +642,20 @@ static huffman_trees *_decode_dynamic_trees(stream *compressed)
   dynamic.cl_distances = ((dynamic_header >> 5) & 0x001f) + 1;
   dynamic.cl_lengths = ((dynamic_header >> 10) & 0x000f) + 4;
 
+  // construct cl tree
   huffman_tree *cl_tree = _decode_cl_tree(compressed, dynamic.cl_lengths);
   if (cl_tree == NULL)
     goto malloc_error;
 
+  // construct literal/length tree
   trees->literal = _decode_cl_lengths(compressed, cl_tree, dynamic.cl_literals);
   if (trees->literal == NULL)
     goto malloc_error;
 
+  // construct distance tree
   trees->distance = _decode_cl_lengths(compressed, cl_tree, dynamic.cl_distances);
   if (trees->distance == NULL)
     goto malloc_error;
-
-  // // read literal/length code lengths from stream
-  // buffer *literal_lengths = buffer_init(dynamic.cl_literals);
-  // trees->literal = _init_huffman_tree(dynamic.cl_literals);
-  // if (trees->literal == NULL)
-  //   goto malloc_error;
-
-  // for (size_t n = 0; n < dynamic.cl_literals; n++)
-  // {
-  //   trees->literal->nodes[n]->value = n;
-  //   trees->literal->nodes[n]->code_length = literal_lengths[n];
-  // }
-  // _construct_tree_from_code_lengths(trees->literal);
-
-  // // read distance table from stream
-  // buffer *distance_lengths = buffer_init(dynamic.cl_distances);
-  // trees->distance = _init_huffman_tree(dynamic.cl_distances);
-  // if (trees->distance == NULL)
-  //   goto malloc_error;
-
-  // for (size_t n = 0; n < dynamic.cl_distances; n++)
-  // {
-  //   trees->distance->nodes[n]->value = n;
-  //   trees->distance->nodes[n]->code_length = literal_lengths[n];
-  // }
-  // _construct_tree_from_code_lengths(trees->distance);
 
   return trees;
 
