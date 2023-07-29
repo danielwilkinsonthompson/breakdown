@@ -6,15 +6,13 @@ data streams, in the style used by DEFLATE and GZIP
 © Daniel Wilkinson-Thompson 2023
 daniel@wilkinson-thompson.com
 
-Known bugs
-- FIXME: stream_write_bits() and/or stream_read_bits() seems to be reversing byte order
-- FIXME: length reported as one extra byte if for a stream with a partial byte
+known bugs:
+- cannot read back partial bytes
 -----------------------------------------------------------------------------*/
 #include <stdbool.h> // bool
 #include <stdint.h>  // uint8_t
 #include <stdio.h>   // printf
 #include <stdlib.h>  // malloc
-#include <string.h>  // memcpy
 #include "buffer.h"  // buffer
 #include "hexdump.h" // hexdump
 #include "error.h"   // error
@@ -73,41 +71,24 @@ stream *stream_init_from_buffer(buffer *b, bool reverse_bits)
     return s;
 }
 
-// size_t stream_push_bits(stream *s, uint8_t *src_byte, size_t size, bool reverse_bits)
-// {
-
-// }
-
 // write
 size_t stream_write_bits(stream *s, uint8_t *src_byte, size_t size, bool reverse_bits)
 {
-    // note, bits are packed in reverse order by convention
-
-    size_t n_bytes = (size + s->tail.bit) / 8;
     size_t bits_written = 0;
-
-    if (s->length + n_bytes > s->capacity)
+    if ((s->length + size) > (s->capacity * 8))
     {
         printf("stream_write_bits: not enough space in stream\n");
-        printf("stream_write_bits: s->length: %zu\n", s->length);
-        printf("stream_write_bits: n_bytes: %zu\n", n_bytes);
-        printf("stream_write_bits: s->capacity: %zu\n", s->capacity);
+        printf("stream_write_bits: s->length: %zu.%zu bytes (%zu bits)\n", s->length / 8, s->length % 8, s->length);
+        printf("stream_write_bits: s->capacity: %zu.%d bytes (%zu bits)\n", s->capacity, 0, s->capacity * 8);
 
         return 0;
     }
 
-    if (reverse_bits)
-        printf("stream_write_bits: reverse_bits\n");
-
     for (size_t i = 0; i < size; i++)
     {
-        // if ((s->length == 0) && (s->tail.bit == 0))
-        //     s->length = 1; // partial byte counts as 1 byte in length
-
         uint8_t bit;
         if (reverse_bits)
         {
-            // TODO: this reverses the order of bytes too, do we want that?
             bit = (src_byte[(size - 1 - i) / 8] >> ((size - 1 - i) % 8)) & 0x01;
         }
         else
@@ -116,15 +97,17 @@ size_t stream_write_bits(stream *s, uint8_t *src_byte, size_t size, bool reverse
         }
         *s->tail.byte |= bit << s->tail.bit;
         s->tail.bit++;
+        s->length++;
+        bits_written++;
         if (s->tail.bit == 8)
         {
             s->tail.bit = 0;
             s->tail.byte++;
-            s->length++;
         }
-        if (s->tail.byte >= s->data + s->capacity)
+        if (s->length >= (s->capacity * 8))
             break;
-        bits_written++;
+        if (s->tail.byte >= s->data + s->capacity)
+            s->tail.byte = s->data;
     }
 
     return bits_written;
@@ -146,43 +129,53 @@ error stream_write_buffer(stream *s, buffer *buf, bool reverse_bits)
 // read
 uint8_t *stream_read_bits(stream *s, size_t size, bool reverse_bits)
 {
-    // note, bits are packed in reverse order by convention
-    size_t n_bytes = size / 8;
+    size_t n_bytes = size / 8 + (size % 8 > 0 ? 1 : 0); // ceil(size / 8)
     uint8_t *bits = (uint8_t *)calloc(n_bytes, sizeof(uint8_t));
     if (bits == NULL)
         return NULL;
 
-    // printf("bits: %p (%zu bytes)\n", bits, n_bytes);
+    // size_t bytes_occupied = s->tail.byte >= s->head.byte ? (s->tail.byte - s->head.byte) : (s->capacity - (s->head.byte - s->tail.byte));
+    // size_t bits_occupied = s->tail.bit >= s->head.bit ? (s->tail.bit - s->head.bit) : (8 - (s->head.bit - s->tail.bit));
 
-    // hexdump(stderr, (const void *)bits, n_bytes);
+    size_t n_bits = s->length;
+    // bytes_occupied * 8 + bits_occupied;
+    // printf("bits_occupied: %zu bytes_occupied: %zu n_bits: %zu\n", bits_occupied, bytes_occupied, n_bits);
+    if (size > s->length)
+    {
+        printf("error: not enough bits in stream\n");
+        printf("stream contains %zu.%zu bytes (%zu bits)\n", s->length / 8, s->length % 8, s->length);
+        printf("attempting to read %zu bits\n", size);
 
-    // printf("n_bytes: %zu vs s->length: %zu\n", n_bytes, s->length);
-
-    if (n_bytes > s->capacity)
+        free(bits);
         return NULL;
+    }
 
     for (size_t i = 0; i < size; i++)
     {
         if (reverse_bits)
         {
-            // do we also want to reverse the byte order?
-            // if reading 2 bits from byte 0x01, we want output to be 0x02, not 0x40
             uint8_t shift_max = size < 8 ? size - 1 : 7;
-            bits[i / 8] |= ((*s->head.byte & (0x01 << s->head.bit)) >> (s->head.bit)) << (shift_max - (i % 8));
+            bits[(size - 1 - i) / 8] |= ((*s->head.byte & (0x01 << s->head.bit)) >> (s->head.bit)) << (shift_max - (i % 8));
         }
         else
         {
             bits[i / 8] |= ((*s->head.byte & (0x01 << s->head.bit)) >> (s->head.bit)) << (i % 8);
+            // printf("bits[%zu / 8]: %02x\n", i, bits[i / 8]);
         }
         s->head.bit++;
+        s->length--;
         if (s->head.bit == 8)
         {
             s->head.bit = 0;
+            *s->head.byte = 0;
             s->head.byte++;
-            s->length--;
         }
+
         if (s->length == 0)
             break;
+
+        if (s->head.byte >= s->data + s->capacity)
+            s->head.byte = s->data;
     }
 
     return bits;
@@ -215,14 +208,11 @@ void stream_print(stream *s)
 {
     fprintf(stderr, "stream: %p\n", s);
     fprintf(stderr, " - data: %p\n", s->data);
-    fprintf(stderr, " - length: %zu\n", s->length);
-    fprintf(stderr, " - capacity: %zu\n", s->capacity);
+    fprintf(stderr, " - length: %zu.%zu bytes (%zu bits)\n", s->length / 8, s->length % 8, s->length);
+    fprintf(stderr, " - capacity: %zu.0 bytes (%zu bits)\n", s->capacity, s->capacity * 8);
     fprintf(stderr, " - head: %p.%d\n", s->head.byte, s->head.bit);
     fprintf(stderr, " - tail: %p.%d\n", s->tail.byte, s->tail.bit);
     fprintf(stderr, " - contents:\n");
-    fprintf(stderr, " - remaining:\n");
-    hexdump(stderr, (const void *)s->head.byte, s->length);
-    fprintf(stderr, " - whole stream:\n");
     hexdump(stderr, (const void *)s->data, s->capacity);
 }
 

@@ -91,6 +91,8 @@ typedef struct gz_t
   const char *filename;
 } gz;
 
+void gz_free(gz *zip);
+
 buffer *gz_read(const char *filename)
 {
   gz *zip;
@@ -216,11 +218,9 @@ buffer *gz_read(const char *filename)
   status = success;
   while ((bytes_read < data_end - data_start) && (status == success))
   {
-    size_t this_chunk = fread(io_buffer->data, sizeof(uint8_t), GZ_MAX_BUFFER_SIZE, zip->file);
-    bytes_read += this_chunk;
-    io_buffer->length = this_chunk;
+    io_buffer->length = fread(io_buffer->data, sizeof(uint8_t), GZ_MAX_BUFFER_SIZE, zip->file);
+    bytes_read += io_buffer->length;
     stream_write_buffer(compressed, io_buffer, false);
-    compressed->length = bytes_read;
     status = inflate(compressed, decompressed);
   }
 
@@ -231,9 +231,6 @@ buffer *gz_read(const char *filename)
   if (out == NULL)
     goto memory_error;
 
-  // printf("decompressed length: %zu\n", out->length);
-  // printf("zip->footer.size: %u\n", zip->footer.size);
-  // buffer_print(out);
   uint32_t crc32 = calculate_crc32(out);
   if (crc32 != zip->footer.crc32)
   {
@@ -244,23 +241,19 @@ buffer *gz_read(const char *filename)
 #ifdef DEBUG
   printf("compressed: %zu uncompressed: %zu ratio: %0.1f%% uncompressed_name: %s\n", data_end + sizeof(gz_footer), out->length, (float)(data_end + sizeof(gz_footer)) / (float)out->length * 100.0, zip->filename);
 #endif
-  fclose(zip->file);
-  free((void *)zip->filename);
+  gz_free(zip);
   stream_free(compressed);
   stream_free(decompressed);
   buffer_free(io_buffer);
-  free(zip);
 
   return out;
 
 memory_error:
 file_error:
-  fclose(zip->file);
-  free((void *)zip->filename);
+  gz_free(zip);
   stream_free(compressed);
   stream_free(decompressed);
   buffer_free(io_buffer);
-  free(zip);
   buffer_free(out);
 
   return NULL;
@@ -303,7 +296,7 @@ void gz_write(const char *filename, buffer *buf)
   uncompressed = stream_init_from_buffer(buf, false);
   compressed = stream_init(GZ_MAX_BUFFER_SIZE);
   deflate(uncompressed, compressed);
-  fwrite(compressed->data, sizeof(uint8_t), compressed->length, zip->file);
+  fwrite(compressed->data, sizeof(uint8_t), compressed->length / 8, zip->file);
 
   // write the footer to file
   zip->footer.crc32 = calculate_crc32(buf);
@@ -313,8 +306,7 @@ void gz_write(const char *filename, buffer *buf)
   // clean up
   stream_free(uncompressed);
   stream_free(compressed);
-  fclose(zip->file);
-  free(zip);
+  gz_free(zip);
 }
 
 void gz_free(gz *zip)
