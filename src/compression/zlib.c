@@ -9,6 +9,14 @@ daniel@wilkinson-thompson.com
 references:
 - https://datatracker.ietf.org/doc/html/rfc1950
 - https://datatracker.ietf.org/doc/html/rfc2083
+
+todo:
+- implement zlib_compress()
+
+
+known bugs:
+- adler32 checksum is not correct
+
 -----------------------------------------------------------------------------*/
 #include <stdio.h>  // fprintf, stderr
 #include <stdint.h> // uint8_t, uint16_t, uint32_t
@@ -98,17 +106,13 @@ error zlib_decompress(stream *compressed, stream *decompressed)
   /* The FCHECK value must be such that CMF and FLG, when viewed as
   a 16-bit unsigned integer stored in MSB order (CMF*256 + FLG),
   is a multiple of 31. */
-  // FIXME: this is not working, check always fails
-  // pretty sure this is because adler32 is calculated on flipped bytes
   uint16_t header_check = io_buffer[0] << 8 | io_buffer[1];
-  // header_check =
   if (header_check % 31 != 0)
   {
     printf("zlib header check failed\n");
     printf("CMF: %02x\n", io_buffer[0]);
     printf("FLG: %02x\n", io_buffer[1]);
     printf("header check: %u %% 31 = %u\n", header_check, header_check % 31);
-    // goto decompression_failure;
   }
 
   free(io_buffer);
@@ -126,22 +130,32 @@ error zlib_decompress(stream *compressed, stream *decompressed)
   // strip last 4 bytes from compressed stream and save as adler32
   // checksum of *uncompressed* data
   // io_buffer = compressed->data + compressed->length - 4; // should this be -1?
+  // FIXME: this is not safe, stream is a circular buffer, so we can't just
+  //        subtract 4 from the tail pointer
   io_buffer = compressed->tail.byte - 4;
   compressed->tail.byte -= 4;
-  compressed->length -= 4;
+  compressed->length -= 4 * sizeof(uint8_t);
   zstream->adler32 = _big_endian_to_uint32_t(io_buffer);
-  printf("adler32: %08x\n", zstream->adler32);
+  // printf("adler32: %08x\n", zstream->adler32);
 
-  stream_print(compressed);
+  // stream_print(compressed);
 
   err = inflate(compressed, decompressed);
   if (err != success)
     goto decompression_failure;
 
-  // in theory, now we check the adler32 checksum, but we don't do that yet
-  // io_buffer = compressed->data;
+  uint32_t s1 = 1, s2 = 0;
+  for (size_t i = 0; i < decompressed->length; i++)
+  {
+    s1 = (s1 + decompressed->head.byte[i]) % 65521;
+    s2 = (s2 + s1) % 65521;
+    // printf("%c", decompressed->data[i]);
+  }
+  uint32_t adler32 = (s2 << 16) | s1;
+  printf("adler32: %08x(calculated) vs %08x(stored)\n", adler32, zstream->adler32);
+  // FIXME: adler32 checksum is not correct
 
-  printf("decompressed length: %zu\n", decompressed->length);
+  // printf("decompressed length: %zu\n", decompressed->length);
 
   free(zstream);
   // free(io_buffer);
@@ -153,6 +167,7 @@ decompression_failure:
   free(io_buffer);
   return unspecified_error;
 }
+
 error zlib_compress(stream *uncompressed, stream *compressed)
 {
   return success;

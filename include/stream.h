@@ -15,7 +15,7 @@ typedef struct stream_bit_t
 typedef struct stream_t
 {
     uint8_t *data;
-    size_t length;
+    size_t length; // stream length in bits
     size_t capacity;
     stream_bit head;
     stream_bit tail;

@@ -1,5 +1,5 @@
 /*=============================================================================
-                                deflate.c
+                                  deflate.c
 -------------------------------------------------------------------------------
 deflate stream compression
 
@@ -10,6 +10,7 @@ references
 - https://github.com/madler/infgen
 - https://tools.ietf.org/html/rfc1951
 - https://www.youtube.com/watch?v=SJPvNi4HrWQ
+- https://go-compression.github.io/algorithms/lzss/
 
 known bugs
 - deflate() does not handle static huffman trees
@@ -19,6 +20,8 @@ known bugs
 
 todo
 - build static huffman tree object that could be decoded in the same way as dynamic trees
+- write a function to construct length/distance pairs from a stream of bytes
+- TODO: optimise data types to match RFC 1951
 -----------------------------------------------------------------------------*/
 #include <stdint.h>  // uint8_t, uint16_t, uint32_t
 #include <stdlib.h>  // malloc, free
@@ -44,6 +47,9 @@ todo
 // 280..287: 8 bits (0x11c..0x12f) 0b11000000 ..0b11000111  0xc0..0xc7
 #define fixed_literal_7bit_maximum 0x2f
 #define fixed_literal_9bit_minimum 0xc8
+
+#define max_lzss_pairs_per_block 4096
+// research RangeCoder
 
 // see RFC 1951, section 3.2.5
 const uint8_t length_extra_bits[lengths] = {
@@ -80,6 +86,12 @@ const uint16_t distance_base[distances] = {
 // see RFC 1951, section 3.2.7
 const uint8_t dynamic_cl_symbol_order[cl_size] = {
     16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+
+typedef struct lzss_t
+{
+  uint32_t length;
+  uint32_t distance;
+} lzss;
 
 typedef struct node_t
 {
@@ -168,6 +180,7 @@ error deflate(stream *uncompressed, stream *compressed)
 
   // Recommended flow for deflate()
   // Capture a manageable block of input data (e.g. 100kB)
+  // - Note that the distance codes are limited to 32kB, so perhaps limit the block size to 32kB
   // Append EOB marker to block
   // Apply LZSS to compress repeated symbols
   // Construct dynamically-generated Huffman trees for literal/length and distance codes
@@ -184,21 +197,21 @@ error deflate(stream *uncompressed, stream *compressed)
   header.reserved = 0;
 
   // write block header
-  size_t bytes_written = stream_write_bytes(compressed, (uint8_t *)&header, 1, false);
-  if (bytes_written != 1)
+  size_t bits_written = stream_write_bits(compressed, (uint8_t *)&header, 8, false);
+  if (bits_written != sizeof(block_header) * 8)
     goto io_error;
 
   uncompressed_block_header uncompressed_header;
-  uncompressed_header.length = uncompressed->length;
-  uncompressed_header.not_length = ~uncompressed->length;
+  uncompressed_header.length = uncompressed->length / 8;
+  uncompressed_header.not_length = ~(uncompressed->length / 8);
 
-  bytes_written = stream_write_bytes(compressed, (uint8_t *)&uncompressed_header.length, 4, false);
-  if (bytes_written != 4)
+  bits_written = stream_write_bits(compressed, (uint8_t *)&uncompressed_header.length, sizeof(uncompressed_block_header) * 8, false);
+  if (bits_written != sizeof(uncompressed_block_header) * 8)
     goto io_error;
 
   // write uncompressed data
-  bytes_written = stream_write_bytes(compressed, uncompressed->data, uncompressed->length, false);
-  if (bytes_written != uncompressed->length)
+  bits_written = stream_write_bits(compressed, uncompressed->head.byte, uncompressed->length, false);
+  if (bits_written != uncompressed->length)
     goto io_error;
 
   return success;
@@ -234,7 +247,7 @@ error inflate(stream *compressed, stream *decompressed)
       uint8_t *unused_bits = stream_read_bits(compressed, 5, true);
       free(unused_bits);
 
-      // pull uncompressed block header and write to decompressed stream
+      // pull uncompressed block header
       uint8_t *raw_header = stream_read_bytes(compressed, 4, true);
       uint16_t len = (*raw_header << 8) | *(raw_header + 1);
       uint16_t nlen = (*(raw_header + 2) << 8) | *(raw_header + 3);
@@ -276,12 +289,11 @@ error inflate(stream *compressed, stream *decompressed)
     {
       // decode literal/length code
       uint32_t literal_value;
-
       err = huffman_decode(compressed, trees->literal, &literal_value);
       if (err != success)
         goto io_error;
 
-      // literal codes [0..255] are literal bytes, just transfer to decompressed stream
+      // literal codes [0..255] are just transferred to decompressed stream
       if (literal_value < 256)
       {
         uint8_t value_byte = (uint8_t)literal_value;
@@ -294,7 +306,7 @@ error inflate(stream *compressed, stream *decompressed)
       else if (literal_value == 256)
         break;
 
-      // literal codes [257..285] are length codes, next we decode length and distance
+      // literal codes [257..285] are length codes, we must decode length and distance
       else
       {
         // decode length
@@ -305,7 +317,6 @@ error inflate(stream *compressed, stream *decompressed)
         {
           uint8_t *extra = stream_read_bits(compressed, extra_bits, false);
           extra_length = *extra;
-
           free(extra);
         }
         length = length_base[length] + extra_length;
@@ -395,6 +406,7 @@ static huffman_trees *_init_fixed_huffman_trees(void)
   return fixed_trees;
 
 malloc_error:
+  printf("deflate: init_fixed_huffman_trees: malloc error\n");
   _free_huffman_trees(fixed_trees);
   return NULL;
 }
@@ -408,6 +420,24 @@ static error huffman_decode(stream *compressed, huffman_tree *tree, uint32_t *sy
 
   uint32_t code_buffer = (*stream_bits);
   free(stream_bits);
+
+  // note that the huffman tree internal links are not assigned yet
+  // node *current_node = tree->head;
+  // for (size_t code_length = tree->min_code_length; code_length <= tree->max_code_length; code_length++)
+  // {
+  //   for (uint8_t bit = 0; bit < code_length; bit++)
+  //   {
+  //     if ((current_node->code == code_buffer) && (current_node->code_length == code_length))
+  //     {
+  //       *symbol = current_node->value;
+  //       return success;
+  //     }
+  //     else
+  //     {
+
+  //     }
+  //   }
+  // }
 
   // loop through possible code lengths
   for (size_t code_length = tree->min_code_length; code_length <= tree->max_code_length; code_length++)
@@ -435,6 +465,7 @@ static error huffman_decode(stream *compressed, huffman_tree *tree, uint32_t *sy
     free(extra_bits);
   }
 
+  printf("deflate: huffman_decode: code not found\n");
   return io_error;
 }
 
@@ -476,7 +507,7 @@ static void _construct_tree_from_code_lengths(huffman_tree *tree)
     if (tree->nodes[n]->code_length == 0)
       continue; // don't assign codes to branch nodes
 
-    // first code for a node with a given code length starts at the base code
+    // first code for a node of a given code length starts at the base code
     tree->nodes[n]->code = next_code[tree->nodes[n]->code_length];
 
     // increment the code for the next node with the same code length
@@ -487,11 +518,13 @@ static void _construct_tree_from_code_lengths(huffman_tree *tree)
   tree->min_code_length = min_code_length;
   return;
 malloc_error:
-  printf("malloc error\r\n");
+  printf("deflate: construct_tree_from_code_lengths: malloc error\r\n");
   free(next_code);
   free(length_histogram);
   return;
 }
+
+// construct huffman tree in the style of RFC 1951
 
 // Assign codes based on tree structure
 // static void _assign_codes(node *this_node, uint32_t this_code, uint32_t this_code_length)
@@ -505,6 +538,34 @@ malloc_error:
 //   _assign_codes(this_node->child1, (this_code << 1) + 1, this_code_length + 1);
 //   return;
 // }
+
+static lzss *lzss_encode(stream *uncompressed)
+{
+  // the size of this array should be based on statistics of the uncompressed data
+  lzss *pairs = (lzss *)malloc(sizeof(lzss) * max_lzss_pairs_per_block);
+  if (pairs == NULL)
+    goto malloc_error;
+  uint32_t pair_count = 0;
+
+  // data storage:
+  // output array of length,distance pairs
+  // sliding window of 32kB generated from uncompressed stream
+  // table of known symbols and their locations in the sliding window
+
+  // brute-force search of sliding window for matches with current character
+  // of these matches, which also match the next character?
+  // of these matches, which also match the next character?
+  // end with longest match, or for repeats, closest match (fewer bits to encode distance)
+  // if no matches, write literal byte to output array -- interesting, should we already return a stream with matches inline?
+  // if match, write length,distance pair to output array
+
+  // stream circular buffer location:
+  // index = (head + distance) % capacity + buffer_start
+  // unfortunately, distance is negative, so modulo operator doesn't work
+
+malloc_error:
+  return NULL;
+}
 
 static huffman_tree *_decode_cl_tree(stream *compressed, size_t size)
 {
