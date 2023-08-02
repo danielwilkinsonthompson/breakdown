@@ -294,7 +294,18 @@ void gz_write(const char *filename, buffer *buf)
 
   // compress the buffer and write to file
   uncompressed = stream_init_from_buffer(buf, false);
+  if (uncompressed == NULL)
+  {
+    printf("error: could not allocate memory for uncompressed stream\n");
+    goto memory_error;
+  }
   compressed = stream_init(GZ_MAX_BUFFER_SIZE);
+  if (compressed == NULL)
+  {
+    printf("error: could not allocate memory for compressed stream\n");
+    goto memory_error;
+  }
+  printf("got here: %zu\n", uncompressed->length);
   deflate(uncompressed, compressed);
   fwrite(compressed->data, sizeof(uint8_t), compressed->length / 8, zip->file);
 
@@ -304,6 +315,7 @@ void gz_write(const char *filename, buffer *buf)
   fwrite(&buf->length, sizeof(uint32_t), 1, zip->file);
 
   // clean up
+memory_error:
   stream_free(uncompressed);
   stream_free(compressed);
   gz_free(zip);

@@ -123,6 +123,8 @@ error zlib_decompress(stream *compressed, stream *decompressed)
       goto decompression_failure;
     // for now, we don't support dictionaries
 
+    printf("zlib.c - zlib_decompress: dictionary not supported\n");
+
     free(io_buffer);
   }
   // for now, we don't do anything with the compression level
@@ -134,12 +136,11 @@ error zlib_decompress(stream *compressed, stream *decompressed)
   //        subtract 4 from the tail pointer
   io_buffer = compressed->tail.byte - 4;
   compressed->tail.byte -= 4;
-  compressed->length -= 4 * sizeof(uint8_t);
+  compressed->length -= 4 * 8;
   zstream->adler32 = _big_endian_to_uint32_t(io_buffer);
   // printf("adler32: %08x\n", zstream->adler32);
 
   // stream_print(compressed);
-
   err = inflate(compressed, decompressed);
   if (err != success)
     goto decompression_failure;

@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
     {
         fprintf(stderr, "Error reading file\n");
         return EXIT_FAILURE;
-    }    
+    }
 
     FILE *fp = fopen(output_filename, "w");
     for (size_t i = 0; i < buf->length; i++)
@@ -55,9 +55,9 @@ int main(int argc, char *argv[])
     }
     fclose(fp);
 
-    buffer *buf2 = buffer_init(2);
-    buffer_write(buf2, (uint8_t *)"a\n", 2);
-    gz_write("test.gz", buf2);
+    // buffer *buf2 = buffer_init(2);
+    // buffer_write(buf2, (uint8_t *)"a\n", 2);
+    // gz_write("test.gz", buf2);
 
     return EXIT_SUCCESS;
 }
