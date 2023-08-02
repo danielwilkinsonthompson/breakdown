@@ -76,8 +76,8 @@ uint32_t crc32_update(uint32_t crc, buffer *buf)
     if (!crc32_table_generated)
         generate_crc32_table();
 
-    for (uint16_t n = 0; n < buf->length; n++)
-        crc = crc32_table[(crc ^ buf->data[n]) & 0xff] ^ (crc >> 8);
+    for (size_t n = 0; n < buf->length; n++)
+        crc = crc32_table[(crc ^ buf->data[n]) & 0x0000ff] ^ (crc >> 8);
 
     return crc;
 }
