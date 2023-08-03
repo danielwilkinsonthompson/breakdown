@@ -122,6 +122,15 @@ typedef struct png_ihdr_t
 } png_ihdr;
 // IHDR chunk must appear first
 
+typedef enum bit_depth_t
+{
+  one_bit = 1,
+  two_bits = 2,
+  four_bits = 4,
+  eight_bits = 8,
+  sixteen_bits = 16
+} bit_depth;
+
 // bit_depth = {1, 2, 4, 8, 16}
 // colour_type = { 0, 2, 3, 4, 6}
 // compression = 0
@@ -147,6 +156,15 @@ typedef enum filter_method_t
   adaptive_filtering = 0
 } filter_method;
 
+typedef enum png_scanline_filter_method_t
+{
+  no_filter = 0,
+  sub_filter = 1,
+  up_filter = 2,
+  average_filter = 3,
+  paeth_filter = 4
+} png_scanline_filter_method;
+
 typedef struct png_deflate_t
 {
   uint8_t cmf;   // compression method and flags
@@ -171,9 +189,16 @@ typedef struct png_header_t
   uint8_t interlacing;
 } png_header;
 
+typedef struct png_plte_entry_t
+{
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
+} png_plte_entry;
+
 typedef struct png_plte_t
 {
-  uint8_t *colour_table; // 3 bytes per entry, r, g, b
+  png_plte_entry *colour_table; // 3 bytes per entry, r, g, b
 } png_plte;
 // there must not be more than one PLTE chunk
 
@@ -216,9 +241,9 @@ typedef struct png_t
   FILE *file;
   uint8_t signature[PNG_SIGNATURE_LENGTH]; // signature[2], file_size[4], reserved[4], data_offset[4]
   png_header *header;
-  image_pixel *colour_table;
+  png_plte_entry *colour_table;
   size_t colour_table_size;
-  // deflate_blocks *compressed_blocks;
+  stream *compressed_idat;
   image *image;
 } png;
 
@@ -243,6 +268,7 @@ static error _process_idat(png *img, png_chunk *chunk);
 static error _process_plte(png *img, png_chunk *chunk);
 // static error _process_iend(png *img, png_chunk *chunk);
 static error _process_trns(png *img, png_chunk *chunk);
+static image_pixel _colour_lookup(png *img, uint32_t index);
 // static error _process_gama(png *img, png_chunk *chunk);
 // static error _process_bkgd(png *img, png_chunk *chunk);
 // static uint8_t _reflect_uint8(uint8_t b);
@@ -369,6 +395,14 @@ image *png_read(const char *filename)
   if (status != success)
     goto io_error;
 
+  // how big should we make the compressed data stream?
+  img->compressed_idat = stream_init(5000000);
+  if (img->compressed_idat == NULL)
+    goto memory_error;
+
+  img->image = image_init(img->header->height, img->header->width);
+  if (img->image == NULL)
+    goto memory_error;
   // img->compressed_blocks = (deflate_blocks *)malloc(sizeof(deflate_blocks));
   // if (img->compressed_blocks == NULL)
   //   goto memory_error;
@@ -401,6 +435,7 @@ image *png_read(const char *filename)
       break;
     case IDAT:
       status = _process_idat(img, chunk);
+      // TODO: I believe we should aggregate data into a single IDAT stream and decompress via zlib at the end
       break;
     case IEND:
       break;
@@ -413,22 +448,98 @@ image *png_read(const char *filename)
   }
 
   printf("finished reading file\n");
+  printf("compressed image data size: %zu\r\n", img->compressed_idat->length / 8);
 
-  // for (uint8_t i = 0; i < img->compressed_blocks->size; i++)
-  // {
-  //   printf("img->compressed_blocks->block[%d]->length: %zu\n", i, img->compressed_blocks->block[i]->length);
-  //   free(img->compressed_blocks->block[i]);
-  // }
-  // if ((img->compressed_blocks->block != NULL) && (img->compressed_blocks->size == 1))
-  // {
-  // }
-  // free(img->compressed_blocks->block);
+  stream *decompressed = stream_init((img->header->width * img->header->bit_depth / 8 * 4 + 1) * img->header->height);
+  printf("decompressed->capacity = %zu\r\n", decompressed->capacity);
+
+  status = zlib_decompress(img->compressed_idat, decompressed);
+
+  printf("decompressed->length = %zu\r\n", decompressed->length);
+  if (status != success)
+    goto io_error;
+
+  printf("status == success\r\n");
+
+  uint32_t colour_index = 0;
+  uint8_t *buffer_head = decompressed->data;
+  for (int32_t row = 0; row < img->header->height; row++)
+  {
+    buffer_head++; // skip filter byte
+    for (int32_t col = 0; col < img->header->width; col++)
+    {
+      switch (img->header->bit_depth)
+      {
+      case 1:
+        colour_index = 0x01 & (buffer_head[0] >> (col % 8));
+        buffer_head += (col % 8 + 1) / 8;
+        break;
+      case 4:
+        colour_index = 0x0F & (buffer_head[0] >> ((col % 2) * 4));
+        buffer_head += col % 2;
+        break;
+      case 8:
+        colour_index = buffer_head[0];
+        buffer_head += 1;
+        break;
+      case 16:
+        colour_index = (buffer_head[0] << 8) | buffer_head[1];
+        buffer_head += 2;
+        break;
+      default:
+        printf("png_read: invalid bit depth: %d\r\n", img->header->bit_depth);
+        goto io_error;
+      }
+
+      // image_pixel pixel = _colour_lookup(img, colour_index);
+      // printf("0x%06X ", pixel & 0x00FFFFFF);
+      img->image->pixel_data[row * (img->header->width) + col] = _colour_lookup(img, colour_index);
+    }
+    // printf("\r\n");
+  }
+  img->image->width = img->header->width;
+  img->image->height = img->header->height;
 
   return img->image;
 
 io_error:
 memory_error:
   return NULL;
+}
+
+static image_pixel _colour_lookup(png *img, uint32_t index)
+{
+  image_pixel pixel;
+
+  if png_invalid (img)
+    return image_argb(0xFF, 0x00, 0x00, 0x00);
+
+  if (img->colour_table == NULL)
+  {
+    switch (img->header->bit_depth)
+    {
+    case 1:
+    case 2:
+    case 4:
+    case 8:
+      // Unsupported, 1 to 8-bit BMP requires colour table
+      pixel = image_argb(0xFF, 0x00, 0x00, 0x00);
+      // fprintf(stderr, "Error: %d-bit image with no colour table\r\n", bitmap->header->bitdepth);
+    case 16:
+      // Should r and b be swapped? Should they actually be 5-bits wide?
+      pixel = image_argb(0xFF, ((0x0F00 & index) >> 8), ((0x00F0 & index) >> 4), (0x000F & index));
+    case 24:
+    case 32:
+      pixel = image_argb(0xFF, ((0xFF0000 & index) >> 16), ((0x00FF00 & index) >> 8), (0x0000FF & index));
+    default:
+      break;
+    }
+  }
+  else
+  {
+    pixel = image_argb(0xFF, img->colour_table[index].red, img->colour_table[index].green, img->colour_table[index].blue);
+  }
+  return pixel;
 }
 
 static error _process_ihdr(png *img, png_chunk *chunk)
@@ -467,9 +578,14 @@ io_error:
 static error _process_idat(png *img, png_chunk *chunk)
 {
   buffer *idat;
-  stream *decompressed;
-  stream *compressed;
   error status;
+
+  // check inputs
+  if ((img == NULL) || (chunk == NULL) || (chunk->data == NULL) || (chunk->length == 0))
+    goto io_error;
+
+  if (chunk->type != IDAT)
+    goto io_error;
 
   idat = (png_idat *)malloc(sizeof(png_idat));
   if (chunk->type == IDAT) // IDAT
@@ -480,48 +596,17 @@ static error _process_idat(png *img, png_chunk *chunk)
   else
     goto io_error;
 
-  // decompress idat chunk
-  /* Deflate-compressed datastreams within PNG are stored in the "zlib"
-   format, which has the structure:
-
-      Compression method/flags code: 1 byte
-      Additional flags/check bits:   1 byte
-      Compressed data blocks:        n bytes
-      Check value:                   4 bytes
-
-   Further details on this format are given in the zlib specification
-   [RFC1950](https://datatracker.ietf.org/doc/html/rfc1950)
-   */
-
-  compressed = stream_init_from_buffer(idat, false);
-  decompressed = stream_init(32768);
-  status = zlib_decompress(compressed, decompressed);
-
-  // from RFC2083
-  // "Note that with filter method 0, the only one currently defined, this implies prepending a filter type byte to each scanline"
-  // The zlib compression method used in the "deflate" compression method is described in [RFC-1950].
-
-  // note that a single filter-type byte is prepended to each scanline
-  // this seems like it is 0x78, which is the zlib compression method
-  printf("idat->length: %zu\n", idat->length);
-  // add idat block to blocks, decompress all at the end
-  // printf("img->compressed_blocks->size: %zu\n", img->compressed_blocks->size);
-  // printf("img->compressed_blocks->block[img->compressed_blocks->size]->length: %zu\n", img->compressed_blocks->block[img->compressed_blocks->size]->length);
-  // img->compressed_blocks->block[img->compressed_blocks->size]->data = chunk->data;
-  // img->compressed_blocks->block[img->compressed_blocks->size]->length = chunk->length;
-  // img->compressed_blocks->size++;
-
-  hexdump(stderr, idat->data, idat->length);
-  hexdump(stderr, decompressed->data, decompressed->length);
-
+  status = stream_write_buffer(img->compressed_idat, idat, false);
+  if (status != success)
+    goto io_error;
   free(idat);
 
-  return success;
+  return status;
 
 io_error:
   printf("png.c _process_idat():  io_error\n");
   free(idat);
-  return io_error;
+  return status;
 }
 
 static error _process_plte(png *img, png_chunk *chunk)
@@ -534,9 +619,10 @@ static error _process_plte(png *img, png_chunk *chunk)
     goto io_error;
 
   // img->colour_table = (image_pixel *)malloc(sizeof(image_pixel) * chunk->length / sizeof(image_pixel));
-  img->colour_table = (image_pixel *)chunk->data;
-  img->colour_table_size = chunk->length / sizeof(image_pixel);
+  img->colour_table = (png_plte_entry *)chunk->data;
+  img->colour_table_size = chunk->length / sizeof(png_plte_entry);
   printf("img->colour_table_size: %zu\n", img->colour_table_size);
+  hexdump(stderr, img->colour_table, img->colour_table_size * 3);
 
   return success;
 

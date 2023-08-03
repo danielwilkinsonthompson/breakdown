@@ -230,13 +230,13 @@ error inflate(stream *compressed, stream *decompressed)
   if (compressed->data == NULL || decompressed->data == NULL)
     return null_pointer_error;
 
-  // read block header
-  block_header *header = (block_header *)stream_read_bits(compressed, 3, false);
-  if (header == NULL)
-    return io_error;
-
   do
   {
+    // read block header
+    block_header *header = (block_header *)stream_read_bits(compressed, 3, false);
+    if (header == NULL)
+      return io_error;
+
     switch (header->block_type)
     {
     case block_type_uncompressed:
@@ -266,7 +266,7 @@ error inflate(stream *compressed, stream *decompressed)
       err = stream_write_buffer(decompressed, raw_data, false);
       free(raw_data);
       if (err != success)
-        goto io_error;
+        goto decompressed_overflow;
       break;
 
     case block_type_fixed_huffman:
@@ -291,8 +291,8 @@ error inflate(stream *compressed, stream *decompressed)
       // decode literal/length code
       uint32_t literal_value;
       err = huffman_decode(compressed, trees->literal, &literal_value);
-      if (err != success)
-        goto io_error;
+      if (err == buffer_underflow)
+        goto compressed_underflow;
 
       // literal codes [0..255] are just transferred to decompressed stream
       if (literal_value < 256)
@@ -300,7 +300,7 @@ error inflate(stream *compressed, stream *decompressed)
         uint8_t value_byte = (uint8_t)literal_value;
         size_t bytes_written = stream_write_bytes(decompressed, &value_byte, 1, false);
         if (bytes_written != 1)
-          goto io_error;
+          goto decompressed_overflow;
       }
 
       // literal code 256 signifies the end of a block
@@ -317,6 +317,8 @@ error inflate(stream *compressed, stream *decompressed)
         if (extra_bits > 0)
         {
           uint8_t *extra = stream_read_bits(compressed, extra_bits, false);
+          if (extra == NULL)
+            goto compressed_underflow;
           extra_length = *extra;
           free(extra);
         }
@@ -325,13 +327,15 @@ error inflate(stream *compressed, stream *decompressed)
         // decode distance
         uint32_t distance_index;
         err = huffman_decode(compressed, trees->distance, &distance_index);
-        if (err != success)
-          goto io_error;
+        if (err == buffer_underflow)
+          goto compressed_underflow;
         uint32_t extra_distance = 0;
         extra_bits = distance_extra_bits[distance_index];
         if (extra_bits > 0)
         {
           uint8_t *extra = stream_read_bits(compressed, extra_bits, false);
+          if (extra == NULL)
+            goto compressed_underflow;
           extra_distance = extra[0];
           if (extra_bits > 8)
             extra_distance += (extra[1] << 8);
@@ -348,17 +352,22 @@ error inflate(stream *compressed, stream *decompressed)
             printf("panic! panic! panic!\r\n"); // for now, just warn when reading invalid data
           size_t bytes_written = stream_write_bytes(decompressed, byte_value, 1, false);
           if (bytes_written != 1)
-            goto io_error;
+            goto decompressed_overflow;
           length--;
         }
       }
     }
 
-  } while ((header->final == 0) && (compressed->length > 0) && (err == success));
+    // if not up to final block, and remaining data <32768, we might be about to underflow
+    if (header->final == 1)
+    {
+      free(header);
+      break;
+    }
+    else
+      free(header);
 
-close_out:
-  if (header != NULL)
-    free(header);
+  } while ((compressed->length > 0) && (err == success));
 
   return err;
 
@@ -369,6 +378,16 @@ io_error:
 malloc_error:
   printf("deflate.c - inflate() : malloc_error\r\n");
   return memory_error;
+
+  // handle compressed stream underflow
+compressed_underflow:
+  printf("compressed = %zu bytes\r\n", compressed->length / 8);
+  return buffer_underflow;
+
+decompressed_overflow:
+  return buffer_overflow;
+
+  // handle decompressed stream overflow
 }
 
 // TODO: replace this with a binary sequence that inflates to the static trees
@@ -422,12 +441,24 @@ malloc_error:
 
 static error huffman_decode(stream *compressed, huffman_tree *tree, uint32_t *symbol)
 {
+  uint32_t code_buffer = 0, flip_buffer = 0;
+
   // read shortest possible code from stream
+  // for (uint8_t bits = 0; bits < tree->min_code_length; bits++)
+  // {
+  //   uint8_t *stream_bits = stream_read_bits(compressed, 1, false);
+  //   if (stream_bits == NULL)
+  //     return buffer_underflow;
+
+  //   code_buffer <<= 1;
+  //   code_buffer |= *stream_bits;
+  //   free(stream_bits);
+  // }
   uint8_t *stream_bits = stream_read_bits(compressed, tree->min_code_length, true);
   if (stream_bits == NULL)
-    return io_error;
+    return buffer_underflow;
 
-  uint32_t code_buffer = (*stream_bits);
+  code_buffer = *stream_bits;
   free(stream_bits);
 
   // loop through possible code lengths
@@ -449,7 +480,7 @@ static error huffman_decode(stream *compressed, huffman_tree *tree, uint32_t *sy
     // if code is not found, read another bit from the stream
     uint8_t *extra_bits = stream_read_bits(compressed, 1, false);
     if (extra_bits == NULL)
-      return io_error;
+      return buffer_underflow;
 
     code_buffer <<= 1;
     code_buffer |= *extra_bits;

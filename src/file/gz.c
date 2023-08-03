@@ -13,7 +13,6 @@ daniel@wilkinson-thompson.com
 #include <stdint.h>  // uint8_t
 #include <stdio.h>   // printf
 #include <string.h>  // strnlen
-#include <time.h>    // time_t
 #include "buffer.h"  // buffer
 #include "crc.h"     // crc32
 #include "deflate.h" // inflate
@@ -110,11 +109,11 @@ buffer *gz_read(const char *filename)
   if (zip == NULL)
     return NULL;
 
-  compressed = stream_init(GZ_MAX_BUFFER_SIZE);
+  compressed = stream_init(GZ_MAX_BUFFER_SIZE * 1024);
   if (compressed == NULL)
     goto memory_error;
 
-  io_buffer = buffer_init(GZ_MAX_BUFFER_SIZE);
+  io_buffer = buffer_init(GZ_MAX_BUFFER_SIZE * 1024);
   if (io_buffer == NULL)
     goto memory_error;
 
@@ -215,14 +214,20 @@ buffer *gz_read(const char *filename)
   // decompress the file starting at the first byte after the file header
   fseek(zip->file, data_start, SEEK_SET);
   bytes_read = 0;
-  status = success;
-  while ((bytes_read < data_end - data_start) && (status == success))
+  uint8_t buffer_counts = 0;
+  status = buffer_underflow;
+
+  while ((bytes_read < data_end - data_start) && (status == buffer_underflow))
   {
-    io_buffer->length = fread(io_buffer->data, sizeof(uint8_t), GZ_MAX_BUFFER_SIZE, zip->file);
+    io_buffer->length = fread(io_buffer->data, sizeof(uint8_t), GZ_MAX_BUFFER_SIZE * 1024, zip->file);
     bytes_read += io_buffer->length;
     stream_write_buffer(compressed, io_buffer, false);
     status = inflate(compressed, decompressed);
+    buffer_counts++;
+    // FIXME: multi-buffer processing doesn't work
   }
+
+  // printf("buffer_counts: %d\r\n", buffer_counts);
 
   if (status != success)
     goto file_error;
@@ -275,7 +280,6 @@ void gz_write(const char *filename, buffer *buf)
   zip->header.magic[1] = gz_magic[1];
   zip->header.compression_method = gz_deflate_compression;
   zip->header.flags = 0;
-  timestamp = (uint32_t)time(NULL);
   zip->header.timestamp[0] = timestamp & 0xFF;
   zip->header.timestamp[1] = (timestamp >> 8) & 0xFF;
   zip->header.timestamp[2] = (timestamp >> 16) & 0xFF;

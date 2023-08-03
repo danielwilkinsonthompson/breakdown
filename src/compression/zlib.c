@@ -134,13 +134,12 @@ error zlib_decompress(stream *compressed, stream *decompressed)
   // io_buffer = compressed->data + compressed->length - 4; // should this be -1?
   // FIXME: this is not safe, stream is a circular buffer, so we can't just
   //        subtract 4 from the tail pointer
-  io_buffer = compressed->tail.byte - 4;
+  io_buffer = compressed->tail.byte - 3;
   compressed->tail.byte -= 4;
   compressed->length -= 4 * 8;
   zstream->adler32 = _big_endian_to_uint32_t(io_buffer);
   // printf("adler32: %08x\n", zstream->adler32);
 
-  // stream_print(compressed);
   err = inflate(compressed, decompressed);
   if (err != success)
     goto decompression_failure;
