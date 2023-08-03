@@ -7,12 +7,13 @@ data streams, in the style used by DEFLATE and GZIP
 daniel@wilkinson-thompson.com
 
 known bugs:
-- cannot read back partial bytes
+- the reads and writes are very, very slow
 -----------------------------------------------------------------------------*/
 #include <stdbool.h> // bool
 #include <stdint.h>  // uint8_t
 #include <stdio.h>   // printf
 #include <stdlib.h>  // malloc
+#include <time.h>
 #include "buffer.h"  // buffer
 #include "hexdump.h" // hexdump
 #include "error.h"   // error
@@ -121,7 +122,7 @@ size_t stream_write_bytes(stream *s, uint8_t *bytes, size_t size, bool reverse_b
 error stream_write_buffer(stream *s, buffer *buf, bool reverse_bits)
 {
     if (stream_write_bytes(s, buf->data, buf->length, reverse_bits) != buf->length)
-        return buffer_underflow;
+        return buffer_overflow;
     else
         return success;
 }
@@ -134,12 +135,6 @@ uint8_t *stream_read_bits(stream *s, size_t size, bool reverse_bits)
     if (bits == NULL)
         return NULL;
 
-    // size_t bytes_occupied = s->tail.byte >= s->head.byte ? (s->tail.byte - s->head.byte) : (s->capacity - (s->head.byte - s->tail.byte));
-    // size_t bits_occupied = s->tail.bit >= s->head.bit ? (s->tail.bit - s->head.bit) : (8 - (s->head.bit - s->tail.bit));
-
-    size_t n_bits = s->length;
-    // bytes_occupied * 8 + bits_occupied;
-    // printf("bits_occupied: %zu bytes_occupied: %zu n_bits: %zu\n", bits_occupied, bytes_occupied, n_bits);
     if (size > s->length)
     {
         printf("error: not enough bits in stream\n");
@@ -150,18 +145,14 @@ uint8_t *stream_read_bits(stream *s, size_t size, bool reverse_bits)
         return NULL;
     }
 
+    // clock_t start = clock();
+
     for (size_t i = 0; i < size; i++)
     {
         if (reverse_bits)
-        {
-            uint8_t shift_max = size < 8 ? size - 1 : 7;
-            bits[(size - 1 - i) / 8] |= ((*s->head.byte & (0x01 << s->head.bit)) >> (s->head.bit)) << (shift_max - (i % 8));
-        }
+            bits[(size - 1 - i) / 8] |= ((*s->head.byte & (0x01 << s->head.bit)) >> (s->head.bit)) << ((size < 8 ? size - 1 : 7) - (i % 8));
         else
-        {
             bits[i / 8] |= ((*s->head.byte & (0x01 << s->head.bit)) >> (s->head.bit)) << (i % 8);
-            // printf("bits[%zu / 8]: %02x\n", i, bits[i / 8]);
-        }
         s->head.bit++;
         s->length--;
         if (s->head.bit == 8)
@@ -177,6 +168,10 @@ uint8_t *stream_read_bits(stream *s, size_t size, bool reverse_bits)
         if (s->head.byte >= s->data + s->capacity)
             s->head.byte = s->data;
     }
+
+    // clock_t end = clock();
+    // double time_taken = (double)(end - start) / CLOCKS_PER_SEC;
+    // printf("bit access time: %0.9fs\r\n", time_taken);
 
     return bits;
 }

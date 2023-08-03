@@ -5,6 +5,7 @@
 #include <stdio.h>  // printf
 #include <stdlib.h> // size_t
 #include <string.h> // strrchr
+#include <time.h>
 #include "gz.h"
 
 // type2 file contents from https://www.youtube.com/watch?v=SJPvNi4HrWQ
@@ -41,7 +42,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     *file_extension = '\0';
 
+    clock_t start = clock();
     buffer *buf = gz_read(filename);
+    clock_t end = clock();
+    double time_taken = (double)(end - start) / CLOCKS_PER_SEC;
+    printf("Time taken: %0.3fs\r\n", time_taken);
     if (buf == NULL)
     {
         fprintf(stderr, "Error reading file\n");

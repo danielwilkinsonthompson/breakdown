@@ -19,6 +19,7 @@ typedef struct stream_t
     size_t capacity;
     stream_bit head;
     stream_bit tail;
+    // should add stream empty/full flags and callbacks
 } stream;
 
 // typedef struct stream_t stream;
@@ -37,6 +38,10 @@ error stream_write_buffer(stream *s, buffer *buf, bool reverse_bits);
 uint8_t *stream_read_bits(stream *s, size_t size, bool reverse_bits);
 uint8_t *stream_read_bytes(stream *s, size_t size, bool reverse_bits);
 buffer *stream_read_buffer(stream *s, size_t size, bool reverse_bits);
+
+// file
+error stream_fwrite(FILE *file, stream *s, bool reverse_bits);
+error stream_fread(FILE *file, stream *s, bool reverse_bits);
 
 // debug
 void stream_print(stream *s);

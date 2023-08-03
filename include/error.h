@@ -21,6 +21,7 @@ typedef enum error_t
     success = 0,
     warning = 1,
     buffer_underflow = 2,
+    buffer_overflow = 3
 } error;
 
 /*-----------------------------------------------------------------------------

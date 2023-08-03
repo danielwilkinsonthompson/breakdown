@@ -16,9 +16,9 @@ TODO:
 #include <stdlib.h> // malloc/free
 #include <string.h>
 #include "bmp.h"
+#include "png.h"
 #include "image.h"
 #include "array2d.h"
-
 
 typedef image *(*_image_read_function)(const char *filename);
 typedef void (*_image_write_function)(image *img, const char *filename);
@@ -31,9 +31,8 @@ typedef struct _image_type_t
 } _image_type;
 
 static _image_type _supported_types[] = {
-    {.extension = "bmp", .read = bmp_read, .write = bmp_write}
-    // [PNG] = {.extension = "png", .read = png_read, .write = png_write}
-};
+    {.extension = "bmp", .read = bmp_read, .write = bmp_write},
+    {.extension = "png", .read = png_read, .write = png_write}};
 
 static image_pixel image_pixel_interpolate(image_pixel p1, image_pixel p2, float ratio);
 
