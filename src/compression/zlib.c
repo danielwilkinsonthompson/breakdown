@@ -130,41 +130,38 @@ error zlib_decompress(stream *compressed, stream *decompressed)
   // for now, we don't do anything with the compression level
 
   // strip last 4 bytes from compressed stream and save as adler32
-  // checksum of *uncompressed* data
-  // io_buffer = compressed->data + compressed->length - 4; // should this be -1?
   // FIXME: this is not safe, stream is a circular buffer, so we can't just
   //        subtract 4 from the tail pointer
-  io_buffer = compressed->tail.byte - 3;
+  io_buffer = compressed->tail.byte - 4;
   compressed->tail.byte -= 4;
   compressed->length -= 4 * 8;
   zstream->adler32 = _big_endian_to_uint32_t(io_buffer);
-  // printf("adler32: %08x\n", zstream->adler32);
 
   err = inflate(compressed, decompressed);
   if (err != success)
     goto decompression_failure;
 
+  // verify adler32 checksum -- need to access as circular buffer
   uint32_t s1 = 1, s2 = 0;
-  for (size_t i = 0; i < decompressed->length; i++)
+  for (size_t i = 0; i < decompressed->length / 8; i++)
   {
     s1 = (s1 + decompressed->head.byte[i]) % 65521;
     s2 = (s2 + s1) % 65521;
-    // printf("%c", decompressed->data[i]);
   }
   uint32_t adler32 = (s2 << 16) | s1;
-  printf("adler32: %08x(calculated) vs %08x(stored)\n", adler32, zstream->adler32);
-  // FIXME: adler32 checksum is not correct
-
-  // printf("decompressed length: %zu\n", decompressed->length);
+  if (adler32 != zstream->adler32)
+  {
+    printf("adler32: %08x(calculated) vs %08x(stored)\n", adler32, zstream->adler32);
+    goto decompression_failure;
+  }
 
   free(zstream);
-  // free(io_buffer);
 
   return success;
 
 decompression_failure:
   free(zstream);
-  free(io_buffer);
+  // free(io_buffer);
   return unspecified_error;
 }
 
