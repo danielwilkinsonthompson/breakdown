@@ -10,6 +10,9 @@ references:
 TODO:
     - png
     - jpg
+
+KNOWN BUGS:
+    - bilinear interpolation is grabbing pixels from the other side of the image
 -----------------------------------------------------------------------------*/
 #include <stdio.h>  // debugging, file read/write
 #include <stdint.h> // type definitions
