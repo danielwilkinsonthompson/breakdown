@@ -401,20 +401,20 @@ static huffman_trees *_init_fixed_huffman_trees(void)
     goto malloc_error;
 
   // tree for literal/length codes from RFC 1951
-  fixed_trees->literal = _init_huffman_tree(literals + lengths);
+  fixed_trees->literal = _init_huffman_tree(literals + lengths + 1);
   if (fixed_trees->literal == NULL)
     goto malloc_error;
 
   for (size_t n = 0; n < fixed_trees->literal->size; n++)
   {
     fixed_trees->literal->nodes[n]->value = n;
-    if (n < 144)
+    if (n < 144) // 0..143 = 8 bits : 00110000..10111111 = 0x30..0xBF
       fixed_trees->literal->nodes[n]->code_length = 8;
-    else if (n < 256)
+    else if (n < 256) // 144..255 = 9 bits : 110010000..111111111 = 0x190..0x1FF
       fixed_trees->literal->nodes[n]->code_length = 9;
-    else if (n < 280)
+    else if (n < 280) // 256..279 = 7 bits : 0000000..0010111 = 0x00..0x17
       fixed_trees->literal->nodes[n]->code_length = 7;
-    else
+    else // 280..287 = 8 bits : 11000000..11000111 = 0xC0..0xC7
       fixed_trees->literal->nodes[n]->code_length = 8;
   }
 
@@ -488,6 +488,9 @@ static error huffman_decode(stream *compressed, huffman_tree *tree, uint32_t *sy
   }
 
   printf("deflate: huffman_decode: code not found\n");
+  printf("deflate: huffman_decode: code_buffer = %x\n", code_buffer);
+  printf("deflate: huffman_decode: code_length = %zu\n", tree->max_code_length);
+
   return io_error;
 }
 
