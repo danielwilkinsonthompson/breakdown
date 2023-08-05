@@ -83,6 +83,10 @@ target_link_libraries(dictionary_test PRIVATE breakdown)
 add_executable(stream_test test/data/stream_test.c)
 target_link_libraries(stream_test PRIVATE breakdown)
 
+# compression/zlib
+add_executable(zlib_test test/compression/zlib_test.c)
+target_link_libraries(zlib_test PRIVATE breakdown)
+
 # compression/huffman
 # add_executable(huffman_test test/compression/huffman_test.c)
 # target_link_libraries(huffman_test PRIVATE breakdown)
