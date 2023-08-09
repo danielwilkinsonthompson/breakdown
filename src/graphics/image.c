@@ -121,6 +121,7 @@ void image_write(image *img, const char *filename)
     handler->write(img, filename);
 }
 
+// to do this without phase offsets, we need to reverse pixel order and do a second pass
 image *image_resize(image *img, uint32_t height, uint32_t width)
 {
     image *new_img;
@@ -132,8 +133,12 @@ image *image_resize(image *img, uint32_t height, uint32_t width)
     if image_invalid (new_img)
         return NULL;
 
-    float x_ratio = (float)img->width / (float)width;
-    float y_ratio = (float)img->height / (float)height;
+    // float x_ratio = (float)img->width / (float)width;
+    // float y_ratio = (float)img->height / (float)height;
+
+    // for now, hack scaling to deal with filtering phase offset
+    float x_ratio = ((float)img->width - 1) / (float)width;
+    float y_ratio = ((float)img->height - 1) / (float)height;
 
     // bilinear interpolation of pixels from img to new_img
     for (uint32_t row = 0; row < height; row++)
