@@ -141,7 +141,7 @@ uint8_t *stream_read_bits(stream *s, size_t size, bool reverse_bits)
   if (size > s->length)
   {
     if (s->empty != NULL)
-      s->empty(s, (size - s->length)/8); // should this be s->capacity - s->length/8?
+      s->empty(s, (size - s->length) / 8); // should this be s->capacity - s->length/8?
     else
       goto memory_error;
   }
@@ -183,6 +183,15 @@ memory_error:
 uint8_t *stream_read_bytes(stream *s, size_t size, bool reverse_bits)
 {
   return stream_read_bits(s, size * 8, reverse_bits);
+}
+
+uint8_t stream_read_byte(stream *s)
+{
+  uint8_t *byte = stream_read_bytes(s, 1, false);
+  if (byte == NULL)
+    return 0;
+  uint8_t b = *byte;
+  return b;
 }
 
 buffer *stream_read_buffer(stream *s, size_t size, bool reverse_bits)

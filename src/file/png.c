@@ -36,7 +36,7 @@ references:
 /*----------------------------------------------------------------------------
   private macros
 -----------------------------------------------------------------------------*/
-#define DEBUG
+// #define DEBUG
 
 #define PNG_SIGNATURE_LENGTH 8
 #define png_invalid(img) ((img == NULL) || (img->header == NULL))
@@ -120,14 +120,14 @@ typedef enum filter_method_t
   adaptive_filtering = 0
 } filter_method;
 
-typedef enum png_scanline_filter_method_t
+typedef enum png_filter_t
 {
   no_filter = 0,
   sub_filter = 1,
   up_filter = 2,
   average_filter = 3,
   paeth_filter = 4
-} png_scanline_filter_method;
+} png_filter;
 
 typedef struct png_deflate_t
 {
@@ -160,6 +160,14 @@ typedef struct png_plte_entry_t
   uint8_t blue;
 } png_plte_entry;
 
+typedef struct png_pixel_t
+{
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
+  uint8_t alpha;
+} png_pixel;
+
 typedef struct png_trns_t
 {
   uint8_t *data; // 1 byte per entry
@@ -189,12 +197,14 @@ typedef struct png_bkgd_t
 typedef struct png_t
 {
   FILE *file;
-  uint8_t signature[PNG_SIGNATURE_LENGTH]; // signature[2], file_size[4], reserved[4], data_offset[4]
   png_header *header;
-  png_plte_entry *colour_table;
-  size_t colour_table_size;
+  png_plte_entry *palette;
+  size_t palette_size;
   stream *compressed_idat;
+  stream *decompressed_idat;
   image *image;
+  size_t row;
+  size_t col;
 } png;
 
 /*----------------------------------------------------------------------------
@@ -206,20 +216,23 @@ const uint8_t png_signature[PNG_SIGNATURE_LENGTH] = {137, 80, 78, 71, 13, 10, 26
 /*----------------------------------------------------------------------------
   private funcs
 -----------------------------------------------------------------------------*/
-static png_chunk *_get_chunk(png *img);
+static png_chunk *read_chunk(png *img);
 static error _process_ihdr(png *img, png_chunk *chunk);
 static error _process_idat(png *img, png_chunk *chunk);
 static error _process_plte(png *img, png_chunk *chunk);
 static error _process_trns(png *img, png_chunk *chunk);
-static image_pixel _colour_lookup(png *img, uint32_t index);
-// static uint32_t _next_subpixel(png *img, uint8_t *buffer_head, uint32_t col);
+static error read_row(png *img);
+static png_pixel read_pixel(png *img);
+static uint8_t read_subpixel(png *img);
+static png_pixel read_relative_pixel(png *img, int32_t row, int32_t col);
+static int32_t paeth_predictor(uint8_t left, uint8_t above, uint8_t above_left);
 
 // static error _process_gama(png *img, png_chunk *chunk);
 // static error _process_bkgd(png *img, png_chunk *chunk);
 // static uint8_t _reflect_uint8(uint8_t b);
 // static uint32_t _reflect_uint32(uint32_t u32);
 
-static png_chunk *_get_chunk(png *img)
+static png_chunk *read_chunk(png *img)
 {
   png_chunk_header *chunk_header = NULL;
   png_chunk *chunk = NULL;
@@ -288,6 +301,7 @@ image *png_read(const char *filename)
   uint32_t width, height;
   size_t count;
   error status;
+  uint8_t signature[PNG_SIGNATURE_LENGTH]; // signature[2], file_size[4], reserved[4], data_offset[4]
 
   img = (png *)malloc(sizeof(png));
   if (img == NULL)
@@ -301,14 +315,14 @@ image *png_read(const char *filename)
   if (img->file == NULL)
     goto io_error;
 
-  count = fread(img->signature, sizeof(uint8_t), PNG_SIGNATURE_LENGTH, img->file);
+  count = fread(signature, sizeof(uint8_t), PNG_SIGNATURE_LENGTH, img->file);
   if (count == 0)
     goto io_error;
   for (int i = 0; i < PNG_SIGNATURE_LENGTH; i++)
-    if (img->signature[i] != png_signature[i])
+    if (signature[i] != png_signature[i])
       goto io_error;
 
-  chunk = _get_chunk(img);
+  chunk = read_chunk(img);
   if (chunk == NULL)
     goto io_error;
 
@@ -332,20 +346,20 @@ image *png_read(const char *filename)
 
   while ((chunk != NULL) && (chunk->type != IEND))
   {
-    chunk = _get_chunk(img);
+    chunk = read_chunk(img);
 
     switch (chunk->type)
     {
     case PLTE:
       if (have_plte == true)
       {
-        printf("Cannot have multiple PLTE chunks\n");
+        printf("png_read: cannot have multiple PLTE chunks\n");
         goto io_error;
       }
 
       if (have_idat == true)
       {
-        printf("PLTE chunk must come before IDAT chunk\n");
+        printf("png_read: PLTE chunk must come before IDAT chunk\n");
         goto io_error;
       }
       status = _process_plte(img, chunk);
@@ -371,115 +385,26 @@ image *png_read(const char *filename)
     goto io_error;
   }
 
-  stream *decompressed = stream_init((img->header->width * 4 + 1) * img->header->height);
-  status = zlib_decompress(img->compressed_idat, decompressed);
+  // decompress idat chunks
+  img->decompressed_idat = stream_init((img->header->width * 4 + 1) * img->header->bit_depth / 2 * img->header->height);
+  status = zlib_decompress(img->compressed_idat, img->decompressed_idat);
   if (status != success)
     goto io_error;
 
-  // hexdump(stderr, decompressed->data, decompressed->length / 8);
+  // FIXME: we need to decode interlaced images sequentially
+  // e.g. for (int i = 0; i < 7; i++) { decode_pass(i); }
 
-  // Decode pixel value from binary stream based on bit_depth and colour_type
-  uint32_t colour_index = 0;
-  image_pixel pixel_value;
-  uint8_t *buffer_head = decompressed->data;
-  png_scanline_filter_method filter = 0;
-  uint8_t intensity;
-  uint32_t alpha_value = 0;
-  for (int32_t row = 0; row < img->header->height; row++)
+  // FIXME: should we filter the buffer here?
+  hexdump(stderr, img->decompressed_idat->data, img->decompressed_idat->length / 8);
+
+  // decode pixel values
+  for (img->row = 0; img->row < img->header->height; img->row++)
   {
-    filter = *buffer_head;
-    buffer_head++;
-    switch (filter)
-    {
-    case no_filter:
-      break;
-    case sub_filter:
-      break;
-    case up_filter:
-      break;
-    case average_filter:
-      break;
-    case paeth_filter:
-      break;
-    default:
-      printf("png_read: unknown filter type: %d\n", filter);
+    img->col = 0;
+    if (read_row(img) != success)
       goto io_error;
-      break;
-    }
-
-    for (int32_t col = 0; col < img->header->width; col++)
-    {
-
-      // if (img->header->colour_type == indexed_colour)
-      // {
-      //   colour_index = buffer_head[0];
-      //   buffer_head += 1;
-      // }
-      // else
-      // {
-
-      switch (img->header->bit_depth)
-      {
-      case 1:
-        colour_index = 0x01 & (buffer_head[0] >> (col % 8));
-        buffer_head += (col % 8 + 1) / 8;
-        break;
-      case 2:
-        colour_index = 0x03 & (buffer_head[0] >> ((col % 4) * 2));
-        buffer_head += (col % 4 + 1) / 4;
-        printf("%x", colour_index);
-        break;
-      case 4:
-        colour_index = 0x0F & (buffer_head[0] >> ((col % 2) * 4));
-        buffer_head += col % 2;
-        printf("%x", colour_index);
-        break;
-      case 8:
-        colour_index = buffer_head[0];
-        buffer_head += 1;
-        break;
-      case 16:
-        colour_index = (buffer_head[0] << 8) | buffer_head[1];
-        buffer_head += 2;
-        break;
-      default:
-        printf("invalid bit depth: %d\r\n", img->header->bit_depth);
-        goto io_error;
-      }
-      // }
-
-      switch (img->header->colour_type)
-      {
-      case greyscale:
-        intensity = colour_index * 0xFF / ((1 << (img->header->bit_depth)) - 1);
-        pixel_value = image_argb(0xFF, intensity, intensity, intensity);
-        break;
-
-      case truecolour:
-        // truecolour
-        break;
-
-      case indexed_colour:
-        pixel_value = _colour_lookup(img, colour_index);
-        break;
-
-      case greyscale_with_alpha:
-        intensity = colour_index * 0xFF / ((1 << (img->header->bit_depth)) - 1);
-
-        if (img->header->bit_depth == 16)
-          alpha_value = (buffer_head[0] << 8) | (buffer_head[1]);
-        else
-          alpha_value = buffer_head[0];
-        pixel_value = image_argb(alpha_value, intensity, intensity, intensity);
-        break;
-
-      case truecolour_with_alpha:
-        break;
-      }
-
-      img->image->pixel_data[row * (img->header->width) + col] = pixel_value;
-    }
   }
+
   img->image->width = img->header->width;
   img->image->height = img->header->height;
 
@@ -493,39 +418,262 @@ memory_error:
   return NULL;
 }
 
-static image_pixel _colour_lookup(png *img, uint32_t index)
+static error read_row(png *img)
 {
-  image_pixel pixel;
+  uint8_t *bits = stream_read_bits(img->decompressed_idat, 8, false);
+  png_filter filter = *bits;
+  free(bits);
+  png_pixel raw, left, above, above_left, combined;
+  png_pixel zero = {0, 0, 0, 0};
+  // FIXME: Filtering is required to operate on bytes, not pixels, we need to move it down the stack
+  //        and operate on bytes, then convert to pixels
+
+  switch (filter)
+  {
+  default:
+    printf("png read_row: unknown filter type: 0x%02x encountered at row: %zu\n", filter, img->row);
+    goto io_error;
+
+  case no_filter:
+    printf("no filter\n");
+    for (img->col = 0; img->col < img->header->width; img->col++)
+    {
+      raw = read_pixel(img);
+      img->image->pixel_data[img->row * img->header->width + img->col] = image_argb(raw.alpha, raw.red, raw.green, raw.blue);
+    }
+    break;
+  case sub_filter:
+    printf("sub filter\n");
+    for (img->col = 0; img->col < img->header->width; img->col++)
+    {
+      raw = read_pixel(img);
+      if (img->col == 0)
+        left = zero;
+      else
+        left = read_relative_pixel(img, -1, 0);
+      combined.red = (raw.red + left.red) % 256;
+      combined.green = (raw.green + left.green) % 256;
+      combined.blue = (raw.blue + left.blue) % 256;
+      combined.alpha = raw.alpha;
+      img->image->pixel_data[img->row * img->header->width + img->col] = image_argb(combined.alpha, combined.red, combined.green, combined.blue);
+    }
+    break;
+  case up_filter:
+    printf("up filter\n");
+    for (img->col = 0; img->col < img->header->width; img->col++)
+    {
+      raw = read_pixel(img);
+      if (img->row == 0)
+        above = zero;
+      else
+        above = read_relative_pixel(img, 0, -1);
+      combined.red = (raw.red + above.red) % 256;
+      combined.green = (raw.green + above.green) % 256;
+      combined.blue = (raw.blue + above.blue) % 256;
+      combined.alpha = raw.alpha;
+      img->image->pixel_data[img->row * img->header->width + img->col] = image_argb(combined.alpha, combined.red, combined.green, combined.blue);
+    }
+    break;
+  case average_filter:
+    printf("average filter\n");
+    for (img->col = 0; img->col < img->header->width; img->col++)
+    {
+      raw = read_pixel(img);
+      if (img->col == 0)
+        left = zero;
+      else
+        left = read_relative_pixel(img, -1, 0);
+
+      if (img->row == 0)
+        above = zero;
+      else
+        above = read_relative_pixel(img, 0, -1);
+
+      combined.red = (raw.red + (left.red + above.red) / 2) % 256;
+      combined.green = (raw.green + (left.green + above.green) / 2) % 256;
+      combined.blue = (raw.blue + (left.blue + above.blue) / 2) % 256;
+      combined.alpha = raw.alpha;
+      img->image->pixel_data[img->row * img->header->width + img->col] = image_argb(combined.alpha, combined.red, combined.green, combined.blue);
+    }
+    break;
+  case paeth_filter:
+    printf("paeth filter\n");
+    for (img->col = 0; img->col < img->header->width; img->col++)
+    {
+      raw = read_pixel(img);
+      if (img->col == 0)
+        left = zero;
+      else
+        left = read_relative_pixel(img, -1, 0);
+
+      if (img->row == 0)
+        above = zero;
+      else
+        above = read_relative_pixel(img, 0, -1);
+
+      if ((img->col == 0) || (img->row == 0))
+        above_left = zero;
+      else
+        above_left = read_relative_pixel(img, -1, -1);
+
+      combined.red = (raw.red + paeth_predictor(left.red, above.red, above_left.red)) % 256;
+      combined.green = (raw.green + paeth_predictor(left.green, above.green, above_left.green)) % 256;
+      combined.blue = (raw.blue + paeth_predictor(left.blue, above.blue, above_left.blue)) % 256;
+      combined.alpha = (raw.alpha + paeth_predictor(left.alpha, above.alpha, above_left.alpha)) % 256;
+      printf("paeth: %d %d %d %d\n", combined.alpha, combined.red, combined.green, combined.blue);
+      img->image->pixel_data[img->row * img->header->width + img->col] = image_argb(combined.alpha, combined.red, combined.green, combined.blue);
+    }
+    break;
+  }
+
+  return success;
+
+io_error:
+  printf("png read_row: io_error\r\n");
+  return io_error;
+}
+
+static int32_t paeth_predictor(uint8_t left, uint8_t above, uint8_t above_left)
+{
+  int32_t p, pa, pb, pc;
+
+  p = left + above - above_left;
+  pa = abs(p - left);
+  pb = abs(p - above);
+  pc = abs(p - above_left);
+
+  if (pa <= pb && pa <= pc)
+    return left;
+  else if (pb <= pc)
+    return above;
+  else
+    return above_left;
+}
+
+static png_pixel read_relative_pixel(png *img, int32_t col, int32_t row)
+{
+  png_pixel pixel;
+  image_pixel ref;
+
+  ref = img->image->pixel_data[(img->row + row) * img->header->width + img->col + col];
+  pixel.red = image_r(ref);
+  pixel.green = image_g(ref);
+  pixel.blue = image_b(ref);
+  pixel.alpha = image_a(ref);
+
+  return pixel;
+}
+
+static uint8_t read_subpixel(png *img)
+{
+  uint8_t output;
+  uint8_t *index;
+  uint32_t value = 0;
+
+  // FIXME: data is byte swapped?
+  index = stream_read_bits(img->decompressed_idat, img->header->bit_depth, false);
+  if (index == NULL)
+    goto io_error;
+
+  if (img->header->bit_depth == 16)
+    value = (index[0] << 8) | index[1];
+  else
+    value = index[0];
+  free(index);
+
+  // printf("%02zu%02zu ", img->row, img->col);
+
+  switch (img->header->bit_depth)
+  {
+  case 1:
+    output = (0x01 & value) * 0xFF;
+    break;
+  case 2:
+    output = (0x03 & value) * 0x55;
+    break;
+  case 4:
+    output = (0x0F & value) * 0x11;
+    break;
+  case 8:
+    output = (0xFF & value);
+    break;
+  case 16:
+    output = (0xFFFF & value) >> 8;
+    break;
+  default:
+    printf("read_subpixel: invalid bit depth: %d\n", img->header->bit_depth);
+    return 0;
+    break;
+  }
+
+  return output;
+io_error:
+  printf("read_subpixel: could not read pixel data from stream\n");
+  return 0;
+}
+
+static png_pixel read_pixel(png *img)
+{
+  png_pixel pixel = {.red = 0x00, .green = 0x00, .blue = 0x00, .alpha = 0xFF};
+  uint8_t index;
+  uint8_t *stream_bits;
 
   if png_invalid (img)
-    return image_argb(0xFF, 0x00, 0x00, 0x00);
+    return pixel;
 
-  if (img->colour_table == NULL)
+  switch (img->header->colour_type)
   {
-    switch (img->header->bit_depth)
-    {
-    case 1:
-    case 2:
-    case 4:
-    case 8:
-      pixel = image_argb(0xFF, 0x00, 0x00, 0x00);
-    case 16:
-      // Should r and b be swapped? Should they actually be 5-bits wide?
-      pixel = image_argb(0xFF, ((0x0F00 & index) >> 8), ((0x00F0 & index) >> 4), (0x000F & index));
-    case 24:
-    case 32:
-      pixel = image_argb(0xFF, ((0xFF0000 & index) >> 16), ((0x00FF00 & index) >> 8), (0x0000FF & index));
-    default:
-      break;
-    }
+  case greyscale:
+    index = read_subpixel(img);
+    pixel.red = index;
+    pixel.green = index;
+    pixel.blue = index;
+    break;
+
+  case truecolour:
+    pixel.red = read_subpixel(img);
+    pixel.green = read_subpixel(img);
+    pixel.blue = read_subpixel(img);
+    break;
+
+  case indexed_colour:
+    stream_bits = stream_read_bits(img->decompressed_idat, img->header->bit_depth, false);
+    if (stream_bits == NULL)
+      goto io_error;
+    index = *stream_bits;
+    free(stream_bits);
+    pixel.red = img->palette[index].red;
+    pixel.blue = img->palette[index].blue;
+    pixel.green = img->palette[index].green;
+    break;
+
+  case greyscale_with_alpha:
+    index = read_subpixel(img);
+    pixel.red = index;
+    pixel.green = index;
+    pixel.blue = index;
+    pixel.alpha = read_subpixel(img); // this might need to be explicitly 1 byte
+    break;
+
+  case truecolour_with_alpha:
+    pixel.red = read_subpixel(img);
+    pixel.green = read_subpixel(img);
+    pixel.blue = read_subpixel(img);
+    pixel.alpha = read_subpixel(img); // this might need to be explicitly 1 byte
+    break;
+
+  default:
+    printf("png_read: unknown colour type: %d\n", img->header->colour_type);
+    goto io_error;
+    break;
   }
-  else
-  {
-    pixel = image_argb(0xFF, img->colour_table[index].red, img->colour_table[index].green, img->colour_table[index].blue);
-    // printf("%02x %02x %02x", img->colour_table[index].red, img->colour_table[index].green, img->colour_table[index].blue);
-    // printf("%02x", index);
-  }
+
   return pixel;
+
+io_error:
+  printf("colour_lookup: io_error\n");
+  png_pixel none = {.red = 0x00, .green = 0x00, .blue = 0x00, .alpha = 0xFF};
+  return none;
 }
 
 static error _process_ihdr(png *img, png_chunk *chunk)
@@ -592,11 +740,11 @@ static error _process_plte(png *img, png_chunk *chunk)
   if (chunk->type != PLTE)
     goto io_error;
 
-  img->colour_table = (png_plte_entry *)chunk->data;
-  img->colour_table_size = chunk->length / sizeof(png_plte_entry);
+  img->palette = (png_plte_entry *)chunk->data;
+  img->palette_size = chunk->length / sizeof(png_plte_entry);
 #ifdef DEBUG
-  printf("img->colour_table_size: %zu\n", img->colour_table_size);
-  hexdump(stderr, img->colour_table, img->colour_table_size * 3);
+  printf("img->palette_size: %zu\n", img->palette_size);
+  hexdump(stderr, img->palette, img->palette_size * 3);
 #endif
   return success;
 
@@ -609,7 +757,10 @@ static error _process_trns(png *img, png_chunk *chunk)
   png_trns *trns;
 
   if (chunk->type == tRNS)
+  {
     trns = (png_trns *)chunk->data;
+    printf("trns block\n");
+  }
   else
     goto io_error;
 

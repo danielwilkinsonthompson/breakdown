@@ -12,20 +12,15 @@ references:
 
 todo:
 - implement zlib_compress()
-
-
-known bugs:
-- adler32 checksum is not correct
-
 -----------------------------------------------------------------------------*/
-#include <stdio.h>  // fprintf, stderr
-#include <stdint.h> // uint8_t, uint16_t, uint32_t
-#include "deflate.h"
-#include "error.h"
-#include "endian.h"
-#include "hexdump.h"
-#include "stream.h"
-#include "zlib.h"
+#include <stdio.h>   // fprintf, stderr
+#include <stdint.h>  // uint8_t, uint16_t, uint32_t
+#include "deflate.h" // deflate
+#include "error.h"   // error
+#include "endian.h"  // _big_endian_to_uint32_t
+#include "hexdump.h" // hexdump
+#include "stream.h"  // stream
+#include "zlib.h"    // zlib
 
 typedef struct zlib_comp_t
 {
@@ -35,12 +30,12 @@ typedef struct zlib_comp_t
 
 typedef enum zlib_comp_method_t
 {
-  zlib_comp_method_deflate = 8
+  zlib_deflate = 8
 } zlib_comp_method;
 
 typedef enum zlib_comp_info_t
 {
-  zlib_comp_info_deflate_max_window_size = 7
+  zlib_max_window_size = 7
 } zlib_comp_info;
 
 typedef struct zlib_flag_t
@@ -85,7 +80,7 @@ error zlib_decompress(stream *compressed, stream *decompressed)
   zstream->compression.method = io_buffer[0] & 0x0f;
   zstream->compression.info = (io_buffer[0] & 0xf0) >> 4;
 
-  if (zstream->compression.method != zlib_comp_method_deflate)
+  if (zstream->compression.method != zlib_deflate)
   {
     printf("zlib compression method not supported\n");
     printf("compression method: %u\n", zstream->compression.method);
@@ -93,7 +88,7 @@ error zlib_decompress(stream *compressed, stream *decompressed)
     goto decompression_failure;
   }
 
-  if (zstream->compression.info > zlib_comp_info_deflate_max_window_size)
+  if (zstream->compression.info > zlib_max_window_size)
   {
     printf("zlib compression window size not supported\n");
     goto decompression_failure;
@@ -124,7 +119,6 @@ error zlib_decompress(stream *compressed, stream *decompressed)
     // for now, we don't support dictionaries
 
     printf("zlib.c - zlib_decompress: dictionary not supported\n");
-
     free(io_buffer);
   }
   // for now, we don't do anything with the compression level
@@ -141,7 +135,8 @@ error zlib_decompress(stream *compressed, stream *decompressed)
   if (err != success)
     goto decompression_failure;
 
-  // verify adler32 checksum -- need to access as circular buffer
+  // verify adler32 checksum
+  // FIXME: need to access as circular buffer
   uint32_t s1 = 1, s2 = 0;
   for (size_t i = 0; i < decompressed->length / 8; i++)
   {
@@ -161,7 +156,6 @@ error zlib_decompress(stream *compressed, stream *decompressed)
 
 decompression_failure:
   free(zstream);
-  // free(io_buffer);
   return unspecified_error;
 }
 

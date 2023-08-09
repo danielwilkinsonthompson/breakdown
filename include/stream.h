@@ -43,6 +43,7 @@ error stream_write_buffer(stream *s, buffer *buf, bool reverse_bits);
 
 // read
 uint8_t *stream_read_bits(stream *s, size_t size, bool reverse_bits);
+uint8_t stream_read_byte(stream *s);
 uint8_t *stream_read_bytes(stream *s, size_t size, bool reverse_bits);
 buffer *stream_read_buffer(stream *s, size_t size, bool reverse_bits);
 
