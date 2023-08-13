@@ -13,6 +13,7 @@ references:
 
 /*
 TODO:
+- make base layer distinctive for alpha compositing
 - frame_draw doesn't composite alpha correctly
 - Separate frame_width, frame_height from pixel_width, pixel_height (essentially, set dpi)
 - create frame(width, height) // fullscreen vs windowed

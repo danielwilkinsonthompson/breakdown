@@ -12,6 +12,7 @@ daniel@wilkinson-thompson.com
 typedef enum error_t
 {
     null_pointer_error = -10,
+    invalid_object = -9,
     io_error = -6,
     index_error = -5,
     type_error = -4,
