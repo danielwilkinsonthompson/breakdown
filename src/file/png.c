@@ -231,11 +231,10 @@ static error _process_idat(png *img, png_chunk *chunk);
 static error _process_plte(png *img, png_chunk *chunk);
 static error _process_trns(png *img, png_chunk *chunk);
 // static error read_row(png *img);
-static error read_pixel(png *img);
+static image_pixel read_pixel(png *img);
 static uint8_t read_subpixel(png *img);
 static int32_t paeth_predictor(uint8_t left, uint8_t above, uint8_t above_left);
-static error unpack_image(png *img);
-
+static image *unpack_image(png *img, uint32_t height, uint32_t width);
 // static error _process_gama(png *img, png_chunk *chunk);
 // static error _process_bkgd(png *img, png_chunk *chunk);
 // static uint8_t _reflect_uint8(uint8_t b);
@@ -397,12 +396,14 @@ image *png_read(const char *filename)
   // hexdump(stderr, img->decompressed_idat->data, img->decompressed_idat->length / 8);
 
   // unpack image from decompressed idat chunks
-  img->image = image_init(img->header->height, img->header->width);
-  if (img->image == NULL)
-    goto memory_error;
-  img->image->width = img->header->width;
-  img->image->height = img->header->height;
-  status = unpack_image(img);
+  if (img->header->interlacing == no_interlace)
+    img->image = unpack_image(img, img->header->height, img->header->width);
+  // else if (img->header->interlacing == adam7_interlace)
+  // {
+  //   // status = unpack_image(img);
+  // }
+  // else
+  //   goto file_format_error;
 
   free(img->header);
   free(img->compressed_idat);
@@ -426,8 +427,12 @@ memory_error:
   return NULL;
 }
 
-static error unpack_image(png *img)
+static image *unpack_image(png *img, uint32_t height, uint32_t width)
 {
+  image *px = image_init(height, width);
+  if (px == NULL)
+    goto memory_error;
+
   uint8_t bits_per_pixel = img->header->bit_depth * ((img->header->colour_type & 0x02 ? 3 : 1) + (img->header->colour_type & 0x04 ? 1 : 0));
 #ifdef DEBUG
   printf("bits_per_pixel: %d\n", bits_per_pixel);
@@ -435,7 +440,7 @@ static error unpack_image(png *img)
   uint16_t average;
   uint16_t left, above, above_left;
 
-  uint8_t bytes_per_row = (bits_per_pixel * img->header->width) / 8;
+  uint8_t bytes_per_row = (bits_per_pixel * width) / 8;
   uint8_t bytes_per_pixel = bits_per_pixel / 8;
   if (bytes_per_pixel == 0)
     bytes_per_pixel = 1;
@@ -444,7 +449,7 @@ static error unpack_image(png *img)
   if (above_row == NULL)
     goto memory_error;
 
-  for (img->row = 0; img->row < img->header->height; img->row++)
+  for (img->row = 0; img->row < height; img->row++)
   {
     png_filter filter = stream_read_byte(img->decompressed_idat);
 
@@ -515,20 +520,24 @@ static error unpack_image(png *img)
     }
     above_row = buffer_write(above_row, img->decompressed_idat->head.byte, bytes_per_row);
 
-    for (img->col = 0; img->col < img->header->width; img->col++)
-      if (read_pixel(img) == io_error)
-        goto io_error;
+    // img->image->pixel_data[img->row * img->header->width + img->col] =
+    for (img->col = 0; img->col < width; img->col++)
+    {
+      px->pixel_data[img->row * width + img->col] = read_pixel(img);
+    }
   }
   buffer_free(above_row);
 
-  return success;
+  return px;
 
 io_error:
+  image_free(px);
   printf("png_read: i/o error\n");
-  return io_error;
+  return NULL;
 memory_error:
+  image_free(px);
   printf("png_read: memory error\n");
-  return memory_error;
+  return NULL;
 }
 
 static int32_t paeth_predictor(uint8_t left, uint8_t above, uint8_t above_left)
@@ -572,31 +581,11 @@ static uint8_t read_subpixel(png *img)
       goto io_error;
 
     if (img->header->bit_depth == 16)
-      value = (index[0] << 8) | index[1];
+      value = (index[1] << 8) | index[0];
     else
       value = index[0];
     free(index);
   }
-  // Any read less than 8-bits needs to be read from the other end of the byte
-  // if (img->header->bit_depth < 8)
-  // {
-  //   // FIXME: this is not working, need to reverse read order
-  //   printf("byte_stream->length: %d\n", byte_stream->length);
-
-  //   if (byte_stream->length == 0)
-  //   {
-  //     index = stream_read_bits(img->decompressed_idat, 8, false);
-  //     if (index == NULL)
-  //       goto io_error;
-  //     // stream_write_bits(byte_stream, index, img->header->bit_depth, false);
-  //     // for (int i = 0; i < 8 / img->header->bit_depth; i++)
-  //     stream_write_bits(byte_stream, index, 8, true);
-  //     free(index);
-  //   }
-
-  //   index = stream_read_bits(byte_stream, img->header->bit_depth, true);
-  // }
-  // else
 
   if (img->header->colour_type == indexed_colour)
     return value;
@@ -630,7 +619,7 @@ io_error:
   return 0;
 }
 
-static error read_pixel(png *img)
+static image_pixel read_pixel(png *img)
 {
   error status;
   png_pixel pixel = {.red = 0x00, .green = 0x00, .blue = 0x00, .alpha = 0xFF};
@@ -657,11 +646,6 @@ static error read_pixel(png *img)
 
   case indexed_colour:
     index = read_subpixel(img);
-    // stream_bits = stream_read_bits(img->decompressed_idat, img->header->bit_depth, false);
-    // if (stream_bits == NULL)
-    //   goto io_error;
-    // index = *stream_bits;
-    // free(stream_bits);
     pixel.red = img->palette[index].red;
     pixel.blue = img->palette[index].blue;
     pixel.green = img->palette[index].green;
@@ -672,14 +656,14 @@ static error read_pixel(png *img)
     pixel.red = index;
     pixel.green = index;
     pixel.blue = index;
-    pixel.alpha = read_subpixel(img); // this might need to be explicitly 1 byte
+    pixel.alpha = read_subpixel(img);
     break;
 
   case truecolour_with_alpha:
     pixel.red = read_subpixel(img);
     pixel.green = read_subpixel(img);
     pixel.blue = read_subpixel(img);
-    pixel.alpha = read_subpixel(img); // this might need to be explicitly 1 byte
+    pixel.alpha = read_subpixel(img);
     break;
 
   default:
@@ -688,13 +672,11 @@ static error read_pixel(png *img)
     break;
   }
 
-  img->image->pixel_data[img->row * img->header->width + img->col] = image_argb(pixel.alpha, pixel.red, pixel.green, pixel.blue);
-
-  return status;
+  return image_argb(pixel.alpha, pixel.red, pixel.green, pixel.blue);
 
 io_error:
   printf("colour_lookup: i/o error\n");
-  return io_error;
+  return image_argb(0, 0, 0, 0);
 }
 
 static error _process_ihdr(png *img, png_chunk *chunk)
