@@ -18,6 +18,9 @@ references:
 - [1] http://www.libpng.org/pub/png/spec/1.2/png-1.2.pdf
 - [2] http://pnrsolution.org/Datacenter/Vol4/Issue1/58.pdf
 
+known bugs:
+- truecolour_with_alpha (colour_type = 6) does not work for 16-bit images
+
 -----------------------------------------------------------------------------*/
 #include <stdio.h>   // fprintf, stderr
 #include <stdint.h>  // uint8_t, uint16_t, uint32_t
@@ -36,7 +39,7 @@ references:
 /*----------------------------------------------------------------------------
   private macros
 -----------------------------------------------------------------------------*/
-#define DEBUG
+// #define DEBUG
 
 #define PNG_SIGNATURE_LENGTH 8
 #define png_invalid(img) ((img == NULL) || (img->header == NULL))
@@ -65,11 +68,6 @@ typedef enum chunk_types_t
   tEXt = 0x74455874,
   zTXt = 0x7A545874
 } chunk_types;
-// 4-byte chunk type code
-// first letter is capital if it is critical
-// second letter is capital if it is public
-// third letter is always a capital
-// fourth letter is capital if it is safe to copy (does not depend on other chunks)
 
 typedef struct png_chunk_t
 {
@@ -95,11 +93,6 @@ typedef struct png_ihdr_t
   uint8_t filter;
   uint8_t interlacing;
 } png_ihdr;
-// bit_depth = {1, 2, 4, 8, 16}
-// colour_type = { greyscale, truecolour, indexed_colour, greyscale_with_alpha, truecolour_with_alpha}
-// compression = deflate_compression
-// filter = adaptive_filtering
-// interlacing = {no_interlace, adam7_interlace}
 
 typedef enum png_colour_type_t
 {
@@ -109,15 +102,6 @@ typedef enum png_colour_type_t
   greyscale_with_alpha = 4,
   truecolour_with_alpha = 6
 } png_colour_type;
-
-typedef enum png_colour_bpp_t
-{
-  greyscale_bit_depth = 1,
-  truecolour_bit_depth = 3,
-  indexed_colour_bit_depth = 1,
-  greyscale_with_alpha_bit_depth = 2,
-  truecolour_with_alpha_bit_depth = 4
-} png_colour_bpp;
 
 typedef enum compression_method_t
 {
@@ -137,13 +121,6 @@ typedef enum png_filter_t
   average_filter = 3,
   paeth_filter = 4
 } png_filter;
-
-typedef struct png_deflate_t
-{
-  uint8_t cmf;   // compression method and flags
-  uint8_t flg;   // flags
-  uint8_t *data; // compressed data
-} png_deflate;
 
 typedef enum interlace_method_t
 {
@@ -169,6 +146,12 @@ typedef struct png_plte_entry_t
   uint8_t blue;
 } png_plte_entry;
 
+typedef struct png_alpha_t
+{
+  uint8_t *value;
+  uint8_t size;
+} png_alpha;
+
 typedef struct png_pixel_t
 {
   uint8_t red;
@@ -181,11 +164,6 @@ typedef struct png_trns_t
 {
   uint8_t *data; // 1 byte per entry
 } png_trns;
-// in the common case where only index 0 need be made transparent, only a single byte is necessary
-// if colour type is greyscale, then two bytes are necessary to specify greyscale values with alpha=0, which is stored in the first byte
-// if colour type is truecolour, then six bytes are necessary to specify RGB values with alpha=0, which is stored in the first byte
-// tRNS is prohibited for colour_type 4 and 6
-// tRNS must precede the first IDAT chunk, and must follow the PLTE chunk if present
 
 typedef struct png_gama_t
 {
@@ -200,14 +178,13 @@ typedef struct png_bkgd_t
 {
   uint8_t *data; // 1 byte per entry
 } png_bkgd;
-// specifies default background colour to display image against
-// if present, must precede the first IDAT chunk
 
 typedef struct png_t
 {
   FILE *file;
   png_header *header;
   png_plte_entry *palette;
+  png_alpha *alpha;
   size_t palette_size;
   stream *compressed_idat;
   stream *decompressed_idat;
@@ -216,29 +193,22 @@ typedef struct png_t
   size_t col;
 } png;
 
-/*----------------------------------------------------------------------------
-  private globals
------------------------------------------------------------------------------*/
 const uint32_t crc_initial = 0xFFFFFFFF;
 const uint8_t png_signature[PNG_SIGNATURE_LENGTH] = {137, 80, 78, 71, 13, 10, 26, 10};
 
-/*----------------------------------------------------------------------------
-  private funcs
------------------------------------------------------------------------------*/
 static png_chunk *read_chunk(png *img);
 static error _process_ihdr(png *img, png_chunk *chunk);
 static error _process_idat(png *img, png_chunk *chunk);
 static error _process_plte(png *img, png_chunk *chunk);
 static error _process_trns(png *img, png_chunk *chunk);
-// static error read_row(png *img);
+static error _process_bkgd(png *img, png_chunk *chunk);
+
 static image_pixel read_pixel(png *img);
 static uint8_t read_subpixel(png *img);
 static int32_t paeth_predictor(uint8_t left, uint8_t above, uint8_t above_left);
 static image *unpack_image(png *img, uint32_t height, uint32_t width);
+static uint8_t scale_subpixel_to_uint8(png *img, uint32_t subpixel);
 // static error _process_gama(png *img, png_chunk *chunk);
-// static error _process_bkgd(png *img, png_chunk *chunk);
-// static uint8_t _reflect_uint8(uint8_t b);
-// static uint32_t _reflect_uint32(uint32_t u32);
 
 static png_chunk *read_chunk(png *img)
 {
@@ -341,11 +311,14 @@ image *png_read(const char *filename)
 
   // FIXME: how big should we make the compressed data stream?
   // I don't think this is necessary, can we just make a compressed stream per chunk?
-  img->compressed_idat = stream_init(5000000);
-  if (img->compressed_idat == NULL)
-    goto memory_error;
+  // img->compressed_idat = stream_init(5000000);
+  // if (img->compressed_idat == NULL)
+  //   goto memory_error;
 
-  img->image = image_init(height, width);
+  img->alpha = NULL;
+
+  // FIXME: do we need to initialise it here? we do it down below
+  // img->image = image_init(height, width);
   bool have_iend = false;
   bool have_plte = false;
   bool have_idat = false;
@@ -374,6 +347,11 @@ image *png_read(const char *filename)
     case IEND:
       have_iend = true;
       break;
+    case tRNS:
+      status = _process_trns(img, chunk);
+      if (have_idat == true)
+        goto file_format_error;
+      break;
     default:
       break;
     }
@@ -391,19 +369,37 @@ image *png_read(const char *filename)
   if (status != success)
     goto io_error;
 
-  // FIXME: we need to decode interlaced images sequentially
-  // e.g. for (int i = 0; i < 7; i++) { decode_pass(i); }
-  // hexdump(stderr, img->decompressed_idat->data, img->decompressed_idat->length / 8);
-
   // unpack image from decompressed idat chunks
   if (img->header->interlacing == no_interlace)
+  {
     img->image = unpack_image(img, img->header->height, img->header->width);
-  // else if (img->header->interlacing == adam7_interlace)
-  // {
-  //   // status = unpack_image(img);
-  // }
-  // else
-  //   goto file_format_error;
+    if (img->image == NULL)
+      goto free_all;
+  }
+  else if (img->header->interlacing == adam7_interlace)
+  {
+    uint8_t offset_x[] = {0, 4, 0, 2, 0, 1, 0};
+    uint8_t offset_y[] = {0, 0, 4, 0, 2, 0, 1};
+    image *pass[7];
+    img->image = image_init(img->header->height, img->header->width);
+    if (img->image == NULL)
+      goto memory_error;
+    int row_divider = 8;
+    int col_divider = 8;
+    for (int i = 0; i < 7; i++)
+    {
+      pass[i] = unpack_image(img, img->header->height / row_divider, img->header->width / col_divider);
+      if (pass[i] == NULL)
+        goto free_all;
+      for (int row = 0; row < pass[i]->height; row++)
+        for (int col = 0; col < pass[i]->width; col++)
+          img->image->pixel_data[row * (img->header->width * row_divider) + (img->header->width * offset_y[i]) + col * col_divider + offset_x[i]] = pass[i]->pixel_data[row * pass[i]->width + col];
+      row_divider = col_divider;
+      col_divider /= (i % 2 + 1);
+    }
+  }
+  else
+    goto file_format_error;
 
   free(img->header);
   free(img->compressed_idat);
@@ -413,22 +409,38 @@ image *png_read(const char *filename)
 
   return out;
 
-// FIXME: we need to free all the things here
 io_error:
   printf("png_read: i/o error\n");
-  return NULL;
+  goto free_all;
 
 file_format_error:
   printf("png_read: file is incorrectly formatted\n");
-  return NULL;
+  goto free_all;
 
 memory_error:
   printf("png_read: memory error\n");
+  goto free_all;
+
+free_all:
+  free(img->header);
+  free(img->compressed_idat);
+  free(img->decompressed_idat);
+  image_free(img->image);
+  // image_free(pass[i]);
+  free(img);
+
   return NULL;
 }
 
 static image *unpack_image(png *img, uint32_t height, uint32_t width)
 {
+  // FIXME: I need to figure out why this combination doesn't work
+  if ((img->header->colour_type == truecolour_with_alpha) && (img->header->bit_depth == 16))
+  {
+    printf("True colour with alpha not supported for 16-bit\r\n");
+    goto png_invalid_error;
+  }
+
   image *px = image_init(height, width);
   if (px == NULL)
     goto memory_error;
@@ -439,7 +451,6 @@ static image *unpack_image(png *img, uint32_t height, uint32_t width)
 #endif
   uint16_t average;
   uint16_t left, above, above_left;
-
   uint8_t bytes_per_row = (bits_per_pixel * width) / 8;
   uint8_t bytes_per_pixel = bits_per_pixel / 8;
   if (bytes_per_pixel == 0)
@@ -452,7 +463,6 @@ static image *unpack_image(png *img, uint32_t height, uint32_t width)
   for (img->row = 0; img->row < height; img->row++)
   {
     png_filter filter = stream_read_byte(img->decompressed_idat);
-
     switch (filter)
     {
     case no_filter:
@@ -468,9 +478,7 @@ static image *unpack_image(png *img, uint32_t height, uint32_t width)
       if (img->row == 0)
         break;
       for (uint32_t byte_pos = 0; byte_pos < bytes_per_row; byte_pos++)
-      { // previous row is getting zeroed as we read it from the stream
         *(img->decompressed_idat->head.byte + byte_pos) += *(above_row->data + byte_pos);
-      }
       break;
 
     case average_filter:
@@ -480,12 +488,10 @@ static image *unpack_image(png *img, uint32_t height, uint32_t width)
           left = 0;
         else
           left = *(img->decompressed_idat->head.byte + byte_pos - bytes_per_pixel);
-
         if (img->row == 0)
           average = left / 2;
         else
           average = (left + *(above_row->data + byte_pos)) / 2;
-
         *(img->decompressed_idat->head.byte + byte_pos) += average;
       }
       break;
@@ -519,11 +525,11 @@ static image *unpack_image(png *img, uint32_t height, uint32_t width)
       goto io_error;
     }
     above_row = buffer_write(above_row, img->decompressed_idat->head.byte, bytes_per_row);
-
-    // img->image->pixel_data[img->row * img->header->width + img->col] =
     for (img->col = 0; img->col < width; img->col++)
     {
       px->pixel_data[img->row * width + img->col] = read_pixel(img);
+      // if (((img->col >= 14) && (img->col <= 17)) && ((img->row >= 14) && (img->row <= 17)))
+      //   printf("r: %3u g: %3u b: %3u a: %3u\n", image_r(px->pixel_data[img->row * width + img->col]), image_g(px->pixel_data[img->row * width + img->col]), image_b(px->pixel_data[img->row * width + img->col]), image_a(px->pixel_data[img->row * width + img->col]));
     }
   }
   buffer_free(above_row);
@@ -537,6 +543,9 @@ io_error:
 memory_error:
   image_free(px);
   printf("png_read: memory error\n");
+  return NULL;
+
+png_invalid_error:
   return NULL;
 }
 
@@ -559,7 +568,6 @@ static int32_t paeth_predictor(uint8_t left, uint8_t above, uint8_t above_left)
 
 static uint8_t read_subpixel(png *img)
 {
-  // stream *byte_stream = stream_init(1);
   uint8_t output;
   uint8_t *index;
   uint32_t value = 0;
@@ -581,7 +589,13 @@ static uint8_t read_subpixel(png *img)
       goto io_error;
 
     if (img->header->bit_depth == 16)
-      value = (index[1] << 8) | index[0];
+    {
+      value = _big_endian_to_uint16_t(index);
+      if (img->header->colour_type == truecolour_with_alpha)
+      {
+        goto io_error;
+      }
+    }
     else
       value = index[0];
     free(index);
@@ -590,33 +604,40 @@ static uint8_t read_subpixel(png *img)
   if (img->header->colour_type == indexed_colour)
     return value;
 
+  return scale_subpixel_to_uint8(img, value);
+io_error:
+  printf("read_subpixel: could not read pixel data from stream\n");
+  return 0;
+}
+
+static uint8_t scale_subpixel_to_uint8(png *img, uint32_t subpixel)
+{
+  uint8_t output;
+
   switch (img->header->bit_depth)
   {
   case 1:
-    output = (0x01 & value) * 0xFF;
+    output = (0x01 & subpixel) * 0xFF;
     break;
   case 2:
-    output = (0x03 & value) * 0x55;
+    output = (0x03 & subpixel) * 0x55;
     break;
   case 4:
-    output = (0x0F & value) * 0x11;
+    output = (0x0F & subpixel) * 0x11;
     break;
   case 8:
-    output = (0xFF & value);
+    output = (0xFF & subpixel);
     break;
   case 16:
-    output = (0xFFFF & value) >> 8;
+    output = ((0xFF00 & subpixel) >> 8);
     break;
   default:
-    printf("read_subpixel: invalid bit depth: %d\n", img->header->bit_depth);
+    printf("scale_subpixel_to_uint8: invalid bit depth: %d\n", img->header->bit_depth);
     return 0;
     break;
   }
 
   return output;
-io_error:
-  printf("read_subpixel: could not read pixel data from stream\n");
-  return 0;
 }
 
 static image_pixel read_pixel(png *img)
@@ -636,19 +657,28 @@ static image_pixel read_pixel(png *img)
     pixel.red = index;
     pixel.green = index;
     pixel.blue = index;
+    if (img->alpha != NULL)
+      if (index == img->alpha->value[0])
+        pixel.alpha = 0x00;
     break;
 
   case truecolour:
     pixel.red = read_subpixel(img);
     pixel.green = read_subpixel(img);
     pixel.blue = read_subpixel(img);
+    if (img->alpha != NULL)
+      if ((pixel.red == img->alpha->value[0]) && (pixel.green == img->alpha->value[1]) && (pixel.blue == img->alpha->value[2]))
+        pixel.alpha = 0x00;
     break;
 
   case indexed_colour:
     index = read_subpixel(img);
     pixel.red = img->palette[index].red;
-    pixel.blue = img->palette[index].blue;
     pixel.green = img->palette[index].green;
+    pixel.blue = img->palette[index].blue;
+    if (img->alpha != NULL)
+      if (index < img->alpha->size)
+        pixel.alpha = img->alpha->value[index];
     break;
 
   case greyscale_with_alpha:
@@ -656,14 +686,14 @@ static image_pixel read_pixel(png *img)
     pixel.red = index;
     pixel.green = index;
     pixel.blue = index;
-    pixel.alpha = read_subpixel(img);
+    pixel.alpha = read_subpixel(img); // not convinced this is working
     break;
 
   case truecolour_with_alpha:
     pixel.red = read_subpixel(img);
     pixel.green = read_subpixel(img);
     pixel.blue = read_subpixel(img);
-    pixel.alpha = read_subpixel(img);
+    pixel.alpha = read_subpixel(img); // not convinced this is working
     break;
 
   default:
@@ -736,6 +766,15 @@ static error _process_idat(png *img, png_chunk *chunk)
   idat->data = (uint8_t *)chunk->data;
   idat->length = chunk->length;
 
+  if (img->compressed_idat == NULL)
+    img->compressed_idat = stream_init(idat->length);
+  else if (img->compressed_idat->capacity - img->compressed_idat->length < idat->length)
+  {
+    img->compressed_idat->data = realloc(img->compressed_idat->data, img->compressed_idat->capacity - img->compressed_idat->length + idat->length);
+    if (img->compressed_idat->data == NULL)
+      goto io_error;
+  }
+
   error status = stream_write_buffer(img->compressed_idat, idat, false);
   if (status != success)
     goto io_error;
@@ -771,42 +810,94 @@ io_error:
 
 static error _process_trns(png *img, png_chunk *chunk)
 {
-  png_trns *trns;
+  png_trns trns;
+  uint32_t value = 0;
 
-  if (chunk->type == tRNS)
-  {
-    trns = (png_trns *)chunk->data;
-    printf("trns block\n");
-  }
-  else
+  if (chunk->type != tRNS)
     goto io_error;
 
-  // in the common case where only index 0 need be made transparent, only a single byte is necessary
-  // if colour type is greyscale, then two bytes are necessary to specify greyscale values with alpha=0, which is stored in the first byte
-  // if colour type is truecolour, then six bytes are necessary to specify RGB values with alpha=0, which is stored in the first byte
-  // tRNS is prohibited for colour_type 4 and 6
-  // tRNS must precede the first IDAT chunk, and must follow the PLTE chunk if present
+  trns.data = chunk->data;
 
-  if (img->header->colour_type == 3)
+  img->alpha = (png_alpha *)malloc(sizeof(png_alpha));
+  if (img->alpha == NULL)
+    goto memory_error;
+
+  switch (img->header->colour_type)
   {
-    // TODO:
-  }
-  else if (img->header->colour_type == 0)
-  {
-    // TODO:
-  }
-  else if (img->header->colour_type == 2)
-  {
-    // TODO:
-  }
-  else
-  {
+  case indexed_colour:
+    img->alpha->size = chunk->length;
+    img->alpha->value = (uint8_t *)malloc(sizeof(uint8_t) * img->alpha->size);
+    if (img->alpha->value == NULL)
+      goto memory_error;
+    for (int i = 0; i < img->alpha->size; i++)
+      img->alpha->value[i] = trns.data[i];
+    break;
+  case greyscale:
+    img->alpha->size = 1;
+    img->alpha->value = (uint8_t *)malloc(sizeof(uint8_t) * img->alpha->size);
+    if (img->alpha->value == NULL)
+      goto memory_error;
+    value = (trns.data[0] << 8) | trns.data[1];
+    img->alpha->value[0] = scale_subpixel_to_uint8(img, value);
+    break;
+  case truecolour:
+    img->alpha->size = 3;
+    img->alpha->value = (uint8_t *)malloc(sizeof(uint8_t) * img->alpha->size);
+    if (img->alpha->value == NULL)
+      goto memory_error;
+    for (uint8_t i = 0; i < img->alpha->size; i++)
+    {
+      value = (trns.data[i * 2] << 8) | trns.data[i * 2 + 1];
+      img->alpha->value[i] = scale_subpixel_to_uint8(img, value);
+    }
+    break;
+  default:
     fprintf(stderr, "colour type is not 0, 2 or 3\n");
     goto io_error;
   }
 
+  return success;
+
 io_error:
   return io_error;
+
+memory_error:
+  return memory_error;
+}
+
+static error _process_bkgd(png *img, png_chunk *chunk)
+{
+  if (chunk->type != bKGD)
+    goto io_error;
+
+  png_bkgd bkgd;
+  bkgd.data = chunk->data;
+
+  // TODO: See Recommendations for Decoders: Background color (Section 10.7).
+  // I don't think bkgd chunks are useful at this time as breakdown library cannot use this information
+  // switch (img->header->colour_type)
+  // {
+  // case greyscale:
+  //   img->image->background = image_argb(0xFF, bkgd.data[0], bkgd.data[0], bkgd.data[0]);
+  //   break;
+  // case truecolour:
+  //   img->image->background = image_argb(0xFF, bkgd.data[0], bkgd.data[1], bkgd.data[2]);
+  //   break;
+  // case indexed_colour:
+  //   img->image->background = image_argb(0xFF, img->palette[bkgd.data[0]].red, img->palette[bkgd.data[0]].green, img->palette[bkgd.data[0]].blue);
+  //   break;
+  // default:
+  //   fprintf(stderr, "colour type is not 0, 2 or 3\n");
+  //   goto io_error;
+  // }
+
+  return success;
+
+io_error:
+  return io_error;
+
+memory_error:
+  return memory_error;
 }
 
 void png_write(image *img, const char *filename)
