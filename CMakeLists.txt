@@ -26,22 +26,21 @@ set(breakdown_src
     include/csv.h
     include/deflate.h
     include/dictionary.h
+    include/draw.h
     include/error.h
     include/frame.h
     include/gz.h
     include/hexdump.h
-    # include/huffman.h
     include/image.h
     include/list.h
+    include/plot.h
     include/png.h
     include/rle.h
     include/stream.h
     include/vector.h
-    # include/zip.h
     include/zlib.h
     src/analysis/vector.c
     src/compression/deflate.c
-    # src/compression/huffman.c
     src/compression/rle.c
     src/compression/zlib.c
     src/data/array2d.c
@@ -54,8 +53,10 @@ set(breakdown_src
     src/file/csv.c
     src/file/gz.c
     src/file/png.c
+    src/graphics/draw.c
     src/graphics/image.c
     src/graphics/frame.c
+    src/graphics/plot.c
     src/system/bits.c
     src/system/error.c
     src/system/hexdump.c
