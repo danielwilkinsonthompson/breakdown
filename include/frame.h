@@ -14,23 +14,12 @@ references:
 #define __frame_h
 #include <stdint.h> // type definitions
 #include <stdbool.h>
+#include "layer.h"
 #include "error.h"
 
 typedef struct layer_t layer;
 typedef void (*_layer_draw_callback)(layer *l);
 typedef struct window_t window;
-
-typedef struct layer_t
-{
-  uint32_t width;
-  uint32_t height;
-  uint32_t *buffer;
-  uint32_t x;
-  uint32_t y;
-  uint32_t z;
-  _layer_draw_callback draw;
-  bool needs_redraw;
-} layer;
 
 typedef struct frame_t
 {
