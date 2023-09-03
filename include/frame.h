@@ -18,7 +18,7 @@ references:
 #include "error.h"
 
 typedef struct layer_t layer;
-typedef void (*_layer_draw_callback)(layer *l);
+// typedef void (*_layer_draw_callback)(layer *l);
 typedef struct window_t window;
 
 typedef struct frame_t
@@ -48,9 +48,8 @@ frame *frame_init_with_options(uint32_t width, uint32_t height, const char *titl
   ----------------------------------------------------------------------------
   add a layer to the frame
   frame  : frame to add layer to
-  z      : z position of layer
 -----------------------------------------------------------------------------*/
-layer *frame_add_layer(frame *frame, uint32_t z);
+layer *frame_add_layer(frame *this_frame);
 
 /*----------------------------------------------------------------------------
   frame_clear
@@ -91,4 +90,4 @@ void frame_destroy(frame *frame);
   ms :  number of milliseconds to put thread to sleep
 -----------------------------------------------------------------------------*/
 void frame_msleep(uint32_t ms);
-#endif
+#endif // __frame_h

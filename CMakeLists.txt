@@ -8,6 +8,10 @@
 # -----------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.7)
 project(breakdown)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-D_DEBUG)
+    add_definitions(-DDEBUG)
+endif()
 option(BREAKDOWN_BUILD_TESTS "Build test apps" TRUE)
 
 # -----------------------------------------------------------------------------
@@ -29,9 +33,11 @@ set(breakdown_src
     include/draw.h
     include/error.h
     include/frame.h
+    include/gui.h
     include/gz.h
     include/hexdump.h
     include/image.h
+    include/layer.h
     include/list.h
     include/plot.h
     include/png.h
@@ -56,6 +62,8 @@ set(breakdown_src
     src/graphics/draw.c
     src/graphics/image.c
     src/graphics/frame.c
+    src/graphics/gui.c
+    src/graphics/layer.c
     src/graphics/plot.c
     src/system/bits.c
     src/system/error.c

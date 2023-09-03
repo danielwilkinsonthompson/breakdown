@@ -11,9 +11,12 @@ daniel@wilkinson-thompson.com
 #include <stdlib.h>
 #include <stdint.h>
 #include "MiniFB.h"
+#include "draw.h"
 #include "error.h"
 #include "image.h"
+#include "layer.h"
 #include "frame.h"
+#include "gui.h"
 
 bool needs_resizing = false;
 bool needs_redrawing = true;
@@ -26,7 +29,7 @@ void mouse_button(struct mfb_window *window, mfb_mouse_button button, mfb_key_mo
         int mouse_x = mfb_get_mouse_x(window);
         int mouse_y = mfb_get_mouse_y(window);
 #ifdef DEBUG
-        fprintf(stderr, "mouse_btn > button: %d\tmod_key: %d\tmouse_x: %d\tmouse_y: %d\r\n", button, mod, mouse_x, mouse_y);
+        fprintf(stderr, "frame_test: mouse_button: button: %d\tmod_key: %d\tmouse_x: %d\tmouse_y: %d\r\n", button, mod, mouse_x, mouse_y);
 #endif
     }
 }
@@ -40,7 +43,7 @@ void key_pressed(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool i
 void resize_window(struct mfb_window *window, int width, int height)
 {
 #ifdef DEBUG
-    fprintf(stderr, "resize > width: %d\theight: %d\r\n", width, height);
+    fprintf(stderr, "frame_test: resize_window: %d\theight: %d\r\n", width, height);
 #endif
     needs_resizing = true;
     needs_redrawing = true;
@@ -48,6 +51,9 @@ void resize_window(struct mfb_window *window, int width, int height)
 
 int main(int argc, char *argv[])
 {
+#if defined(DEBUG)
+    printf("frame_test: running in debug mode\r\n");
+#endif
     error status = success;
     image *test1, *test1_resized;
     image *test2 = NULL;
@@ -72,50 +78,40 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // f = frame_init(test_resized->width, test_resized->height, "Test");
     f = frame_init_with_options(400, 400, "Frame Test", false, false, true, false, 2.0);
     if (f == NULL)
         return EXIT_FAILURE;
 
-    l1 = frame_add_layer(f, 0);
+    l1 = frame_add_layer(f);
     if (l1 == NULL)
         return EXIT_FAILURE;
 
-    test1_resized = image_resize(test1, l1->height, l1->width);
-    if (test1_resized == NULL)
-        return EXIT_FAILURE;
+    draw_image(l1, 0, 0, l1->position.width, l1->position.height, test1);
+    draw_rectangle(l1, 100, 100, 400, 400, image_argb(255, 0, 0, 255));
+    draw_line(l1, 200, 200, 300, 300, image_argb(255, 255, 255, 255));
 
-    free(l1->buffer);
-    l1->buffer = test1_resized->pixel_data;
-    free(test1_resized);
-#ifdef DEBUG
-    printf("layer[0] bitmap alpha = %0.3f\r\n", ((float)image_a(l1->buffer[0])) / 255.0);
-#endif
+    draw_pixel(l1, 200, 200, image_argb(255, 255, 0, 0));
+    draw_pixel(l1, 200, 201, image_argb(255, 255, 0, 0));
+    draw_pixel(l1, 201, 200, image_argb(255, 255, 0, 0));
+    draw_pixel(l1, 201, 201, image_argb(255, 255, 0, 0));
+
+    draw_pixel(l1, 500, 500, image_argb(255, 0, 255, 0));
+    draw_pixel(l1, 500, 501, image_argb(255, 0, 255, 0));
+    draw_pixel(l1, 501, 500, image_argb(255, 0, 255, 0));
+    draw_pixel(l1, 501, 501, image_argb(255, 0, 255, 0));
 
     if (test2 != NULL)
     {
-        l2 = frame_add_layer(f, 1);
+        l2 = frame_add_layer(f);
         if (l2 == NULL)
             return EXIT_FAILURE;
 
-        test2_resized = image_resize(test2, l2->height, l2->width);
-        if (test2_resized == NULL)
-            return EXIT_FAILURE;
-
-        free(l2->buffer);
-        l2->buffer = test2_resized->pixel_data;
-        free(test2_resized);
-
-#ifdef DEBUG
-        printf("layer[1] bitmap alpha = %0.3f\r\n", ((float)image_a(l2->buffer[0])) / 255.0);
-#endif
+        draw_image(l2, 0, 0, l2->position.width, l2->position.height, test2);
     }
 
     mfb_set_mouse_button_callback(f->window, mouse_button);
     mfb_set_keyboard_callback(f->window, key_pressed);
     mfb_set_resize_callback(f->window, resize_window);
-    // mfb_set_active_callback(f->window, active);
-    // int redraw_count = 100;
 
     while (status == success)
     {
@@ -125,34 +121,14 @@ int main(int argc, char *argv[])
             if (e != success)
                 return EXIT_FAILURE;
 
-            test1_resized = image_resize(test1, l1->height, l1->width);
-            if (test1_resized == NULL)
-                return EXIT_FAILURE;
-
-            free(l1->buffer);
-            l1->buffer = test1_resized->pixel_data;
-            free(test1_resized);
-
-            if (test2 != NULL)
-            {
-                test2_resized = image_resize(test2, l2->height, l2->width);
-                if (test2_resized == NULL)
-                    return EXIT_FAILURE;
-
-                free(l2->buffer);
-                l2->buffer = test2_resized->pixel_data;
-                free(test2_resized);
-            }
             needs_resizing = false;
         }
         if (needs_redrawing == true)
         {
             status = frame_draw(f);
+
             if (status != success)
                 return EXIT_FAILURE;
-            // if (mfb_is_window_active(f->window) == false)
-            //     mfb_wait_sync(f->window);
-            // else
             needs_redrawing = false;
         }
         else
