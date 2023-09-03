@@ -11,69 +11,66 @@ references:
 #ifndef __layer_h
 #define __layer_h
 #include <stdint.h> // type definitions
-#include <stdbool.h>
-#include "image.h"
-#include "error.h"
+#include "frame.h"  // frame
+#include "gui.h"    // ui_element
+#include "image.h"  // image
 
 typedef struct layer_t layer;
-typedef void (*_layer_draw_callback)(layer *l);
-typedef void (*_ui_element_draw_callback)(layer *l, ui_object *obj);
+typedef struct frame_t frame;
+typedef void (*_layer_draw_callback)(layer *this_layer);
 
-typedef enum ui_element_type_t
+typedef enum
 {
-    ui_image,
-    ui_text,
-    ui_rectangle,
-    ui_ellipse,
-    ui_line,
-    ui_polyline,
-    ui_polygon,
-    ui_sprite,
-    ui_textbox,
-    ui_button,
-    ui_slider,
-    ui_checkbox,
-    ui_radiobutton,
-    ui_dropdown,
-    ui_inputbox,
-    ui_scrollbar,
-    ui_scrollbox,
-    ui_listbox,
-    ui_canvas,
-    ui_plot,
-    ui_table,
-    ui_menu,
-    ui_window,
-    ui_dialog,
-    ui_popup,
-    ui_tooltip,
-    ui_cursor,
-    ui_keyboard,
-    ui_unspecified
-} ui_element_type;
-
-typedef struct ui_object_t
-{
-    ui_element_type type;
-    void *object_data;
-    uint32_t x;  // left edge relative to layer
-    uint32_t y;  // top edge relative to layer
-    uint32_t z;  // object depth within layer
-    image *raster;
-    _ui_element_draw_callback draw;
-    bool needs_redraw;
-} ui_object;
+  layer_hidden,
+  layer_needs_rendering,
+  layer_done_rendering,
+} layer_draw_state;
 
 typedef struct layer_t
 {
-    image *render;
-    uint32_t nobjects;
-    ui_object **objects;
-    uint32_t x; // left edge relative to frame
-    uint32_t y; // top edge relative to frame
-    uint32_t z; // layer depth within frame
-    _layer_draw_callback draw;
-    bool needs_redraw;
+  uint32_t no_elements;
+  gui_element **gui_elements;
+  coordinates position;
+  image *render;
+  _layer_draw_callback draw;
+  layer_draw_state redraw;
+  frame *parent;
 } layer;
+
+/*-----------------------------------------------------------------------------
+  layer_init
+    creates a new layer
+-----------------------------------------------------------------------------*/
+layer *layer_init(frame *parent);
+
+/*-----------------------------------------------------------------------------
+  layer_draw
+    draw/redraw a layer
+-----------------------------------------------------------------------------*/
+void layer_draw(layer *this_layer);
+
+/*-----------------------------------------------------------------------------
+  layer_add_ui_element
+    add a gui element to the layer
+-----------------------------------------------------------------------------*/
+void layer_add_gui_element(layer *this_layer, gui_element *this_element);
+
+/*-----------------------------------------------------------------------------
+  layer_remove_ui_element
+    remove a gui element from the layer
+-----------------------------------------------------------------------------*/
+void layer_remove_gui_element(gui_element *this_element);
+
+/*-----------------------------------------------------------------------------
+  layer_free
+    free a layer
+-----------------------------------------------------------------------------*/
+void layer_free(layer *this_layer);
+
+/*-----------------------------------------------------------------------------
+  layer_print
+    print a layer
+-----------------------------------------------------------------------------*/
+void layer_print(layer *this_layer);
 
 #endif // __layer_h

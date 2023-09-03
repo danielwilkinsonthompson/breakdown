@@ -5,8 +5,8 @@ frame compositor
 
 © Daniel Wilkinson-Thompson 2023
 daniel@wilkinson-thompson.com
+
 references:
- - https://github.com/danielwilkinsonthompson/breakdown
  - https://github.com/emoon/minifb
  - https://en.wikipedia.org/wiki/Alpha_compositing
 -----------------------------------------------------------------------------*/
@@ -18,8 +18,6 @@ TODO:
 - Separate frame_width, frame_height from pixel_width, pixel_height (essentially, set dpi)
 - create frame(width, height) // fullscreen vs windowed
 - close frame
-- redraw frame
-- resize frame
 - set refresh rate
 - set/get dpi
 - events
@@ -32,12 +30,12 @@ TODO:
 -   redraw
 - get mouse pos
 - get keystroke
--
 */
 
-#include <stdlib.h>
-#include <stdio.h>
+#include <stdlib.h> // malloc/realloc/free
+#include <stdio.h>  // printf
 #include <stdbool.h>
+#include <string.h> // memset
 #include "error.h"
 #include "image.h"
 #include "frame.h"
@@ -57,28 +55,23 @@ typedef struct mfb_window window_t;
 #include <windows.h>
 #endif
 
-void default_layer_draw_callback(layer *l);
-
-static void _get_draw_order(frame *f)
+static void _get_draw_order(frame *this_frame)
 {
-    for (uint32_t i = 0; i < f->layer_count; i++)
+    for (uint32_t i = 0; i < this_frame->layer_count; i++)
     {
-        layer *l = f->layers[i];
-        uint32_t z = l->z;
+        layer *this_layer = this_frame->layers[i];
+        uint32_t z = this_layer->position.z;
         uint32_t j = i;
-        while (j > 0 && f->layers[j - 1]->z > z)
+        // FIXME: This should be a for loop
+        // for (uint32_t j = i, j > 0; j--)
+        while (j > 0 && this_frame->layers[j - 1]->position.z > z)
         {
-            f->layers[j] = f->layers[j - 1];
+            // if(this_frame->layers[j - 1]->position.z > this_layer->position.z)
+            this_frame->layers[j] = this_frame->layers[j - 1];
             j--;
         }
-        f->layers[j] = l;
+        this_frame->layers[j] = this_layer;
     }
-}
-
-void default_layer_draw_callback(layer *l)
-{
-    l->needs_redraw = false;
-    return;
 }
 
 frame *frame_init(uint32_t width, uint32_t height, const char *title)
@@ -95,7 +88,7 @@ frame *frame_init_with_options(uint32_t width, uint32_t height, const char *titl
     f->scaling = scaling;
     f->width = width * scaling;
     f->height = height * scaling;
-    f->buffer = malloc(f->width * f->height * sizeof(uint32_t));
+    f->buffer = (uint32_t *)malloc(f->width * f->height * sizeof(uint32_t));
     if (f->buffer == NULL)
     {
         free(f);
@@ -131,76 +124,54 @@ frame *frame_init_with_options(uint32_t width, uint32_t height, const char *titl
     return f;
 }
 
-error frame_resize(frame *f, uint32_t width, uint32_t height)
+error frame_resize(frame *this_frame, uint32_t width, uint32_t height)
 {
-    f->width = width * f->scaling;
-    f->height = height * f->scaling;
-    f->buffer = realloc(f->buffer, f->width * f->height * sizeof(uint32_t));
-    if (f->buffer == NULL)
-    {
+    this_frame->width = width * this_frame->scaling;
+    this_frame->height = height * this_frame->scaling;
+    this_frame->buffer = (uint32_t *)realloc(this_frame->buffer, this_frame->width * this_frame->height * sizeof(uint32_t));
+    if (this_frame->buffer == NULL)
         return memory_error;
-    }
 
-#ifdef DEBUG
-    printf("frame resized to %dx%d\n", f->width, f->height);
-#endif
+    // FIXME: don't generally need to set pixels to 0
+    memset(this_frame->buffer, 0, this_frame->width * this_frame->height * sizeof(uint32_t));
 
-    for (uint32_t i = 0; i < f->layer_count; i++)
+    // FIXME: resizing layers within a frame needs concept of scaling/bounding box
+    for (uint32_t i = 0; i < this_frame->layer_count; i++)
     {
-        layer *l = f->layers[i];
-        l->width = f->width;
-        l->height = f->height;
-        l->buffer = realloc(l->buffer, l->width * l->height * sizeof(uint32_t));
-        if (l->buffer == NULL)
-            return memory_error;
-
-#ifdef DEBUG
-        printf("layer %d resized to %dx%d\r\n", i, l->width, l->height);
-#endif
-
-        l->draw(l);
+        layer *l = this_frame->layers[i];
+        if (l->redraw != layer_hidden)
+            l->redraw = layer_needs_rendering;
+        // l->draw(l);
     }
-    f->needs_redraw = true;
+    this_frame->needs_redraw = true;
 
     return success;
 }
 
-// void frame_resize_layer(frame *f)
-
-layer *frame_add_layer(frame *f, uint32_t z)
+layer *frame_add_layer(frame *this_frame)
 {
-    layer *l = malloc(sizeof(layer));
-    if (l == NULL)
-    {
+    if (this_frame == NULL)
         return NULL;
-    }
+    if (this_frame->layers == NULL)
+        this_frame->layers = (layer **)malloc(sizeof(layer *));
+    else
+        this_frame->layers = (layer **)realloc(this_frame->layers, sizeof(layer *) * (this_frame->layer_count + 1));
+    if (this_frame->layers == NULL)
+        goto memory_error;
 
-    l->width = f->width;
-    l->height = f->height;
-    l->buffer = malloc(l->width * l->height * sizeof(uint32_t));
-    if (l->buffer == NULL)
-    {
-        free(l);
-        return NULL;
-    }
-    l->z = z;
-    l->needs_redraw = true;
+    layer *this_layer = layer_init(this_frame);
+    this_frame->layers[this_frame->layer_count] = this_layer;
+    this_frame->layer_count++;
+    _get_draw_order(this_frame);
 
-    f->layers = realloc(f->layers, sizeof(layer *) * (f->layer_count + 1));
-    if (f->layers == NULL)
-    {
-        free(l->buffer);
-        free(l);
-        return NULL;
-    }
-    f->layers[f->layer_count] = l;
-    f->layer_count++;
-    _get_draw_order(f);
-    l->draw = default_layer_draw_callback;
+    this_frame->needs_redraw = true;
 
-    f->needs_redraw = true;
+    return this_layer;
 
-    return l;
+memory_error:
+#if defined(DEBUG)
+    printf("frame_add_layer: memory allocation failed.\n");
+#endif // DEBUG
 }
 
 error frame_draw(frame *f)
@@ -209,27 +180,24 @@ error frame_draw(frame *f)
     uint8_t red_composite, green_composite, blue_composite;
     float alpha_frame, alpha_layer, alpha_composite;
 
-    // printf("frame_draw: needs_redraw = %s layer_count = %d\r\n", f->needs_redraw ? "true" : "false", f->layer_count);
-
     if ((f->layer_count == 0) || (f->needs_redraw == false))
-    {
         return success;
-    }
 
     _get_draw_order(f);
 
     for (uint32_t i = 0; i < f->layer_count; i++)
     {
         layer *l = f->layers[i];
-        if (l->needs_redraw == true)
-            l->draw(l);
+        l->draw(l);
 
-        for (uint32_t y = 0; y < l->height; y++)
+        printf("layer %d rendering to frame\r\n", i);
+
+        for (uint32_t y = 0; y < l->position.height; y++) // FIXME: should not exceed frame->height
         {
-            for (uint32_t x = 0; x < l->width; x++)
+            for (uint32_t x = 0; x < l->position.width; x++) // FIXME: should not exceed frame->width
             {
-                uint32_t *pixel = l->buffer + (y * l->width) + x;
-                uint32_t *frame_pixel = f->buffer + ((y + l->y) * f->width) + (x + l->x);
+                uint32_t *pixel = l->render->pixel_data + (y * l->render->width) + x;
+                uint32_t *frame_pixel = f->buffer + ((y + l->position.y) * f->width) + (x + l->position.x);
 
                 if (image_a(*pixel) == 0)
                 {
@@ -250,15 +218,14 @@ error frame_draw(frame *f)
                 *frame_pixel = image_argb((uint8_t)(alpha_composite * 255.0), red_composite, green_composite, blue_composite);
             }
         }
-#ifdef DEBUG
-        printf("layer[%d] alpha = %0.3f; frame alpha = %0.3f; composite alpha = %0.3f\r\n", i, alpha_layer, alpha_frame, alpha_composite);
-#endif
+        printf("layer %d drawn\r\n", i);
     }
 #ifdef MINIFB_IMPLEMENTATION
 
     mfb_update_state state = mfb_update_ex(f->window, f->buffer, f->width, f->height);
     if (state != STATE_OK)
     {
+        printf("Error: could not update frame\r\n");
         mfb_close(f->window);
         free(f->buffer);
         free(f);
@@ -269,7 +236,6 @@ error frame_draw(frame *f)
         status = success;
     }
 #endif
-
     return status;
 }
 
