@@ -42,9 +42,6 @@ void key_pressed(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool i
 
 void resize_window(struct mfb_window *window, int width, int height)
 {
-#ifdef DEBUG
-    fprintf(stderr, "frame_test: resize_window: %d\theight: %d\r\n", width, height);
-#endif
     needs_resizing = true;
     needs_redrawing = true;
 }
@@ -89,6 +86,7 @@ int main(int argc, char *argv[])
     draw_image(l1, 0, 0, l1->position.width, l1->position.height, test1);
     draw_rectangle(l1, 100, 100, 400, 400, image_argb(255, 0, 0, 255));
     draw_line(l1, 200, 200, 300, 300, image_argb(255, 255, 255, 255));
+    draw_polyline(l1, (int32_t[]){200, 300, 300, 200}, (int32_t[]){200, 200, 300, 300}, 4, image_argb(255, 255, 255, 255));
 
     draw_pixel(l1, 200, 200, image_argb(255, 255, 0, 0));
     draw_pixel(l1, 200, 201, image_argb(255, 255, 0, 0));

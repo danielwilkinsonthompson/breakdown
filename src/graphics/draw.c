@@ -18,16 +18,16 @@ Notes:
 #include "image.h"  // image
 #include "layer.h"  // layer
 
-static image_pixel *pixel_at(layer *this_layer, int32_t x, int32_t y);
+// static image_pixel *pixel_at(layer *this_layer, int32_t x, int32_t y);
 
-/*----------------------------------------------------------------------------
-  pixel_at
-    returns a pointer to the pixel at (x, y)
------------------------------------------------------------------------------*/
-static image_pixel *pixel_at(layer *this_layer, int32_t x, int32_t y)
-{
-  return this_layer->render->pixel_data + (y * this_layer->render->width) + x;
-}
+// /*----------------------------------------------------------------------------
+//   pixel_at
+//     returns a pointer to the pixel at (x, y)
+// -----------------------------------------------------------------------------*/
+// static image_pixel *pixel_at(layer *this_layer, int32_t x, int32_t y)
+// {
+//   return this_layer->render->pixel_data + (y * this_layer->render->width) + x;
+// }
 
 /*----------------------------------------------------------------------------
   draw_pixel
@@ -54,11 +54,19 @@ void draw_line(layer *this_layer, int32_t x1, int32_t y1, int32_t x2, int32_t y2
 -----------------------------------------------------------------------------*/
 void draw_polyline(layer *this_layer, int32_t *x, int32_t *y, uint32_t num_points, uint32_t colour)
 {
-  gui_element *this_element = gui_element_init(this_layer, gui_polyline, (coordinates){x[0], y[0], 0, x[num_points - 1], y[num_points - 1]});
+  // need to figure out how to allocate an array of coordinates
+  coordinates *positions = (coordinates *)malloc(num_points * sizeof(coordinates));
   for (uint32_t i = 0; i < num_points - 1; i++)
   {
-    draw_line(this_layer, x[i], y[i], x[i + 1], y[i + 1], colour);
+    // draw_line(this_layer, x[i], y[i], x[i + 1], y[i + 1], colour);
+    positions[i].x = x[i];
+    positions[i].y = y[i];
   }
+  gui_element *this_element = gui_element_init(this_layer, gui_polyline, *positions);
+  free(this_element->data->position);
+  this_element->data->position = positions;
+  this_element->data->num_points = num_points;
+  this_element->data->colour = colour;
 }
 
 /*----------------------------------------------------------------------------

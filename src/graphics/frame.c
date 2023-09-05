@@ -81,7 +81,7 @@ frame *frame_init(uint32_t width, uint32_t height, const char *title)
 
 frame *frame_init_with_options(uint32_t width, uint32_t height, const char *title, bool fullscreen, bool vsync, bool resizable, bool borderless, float scaling)
 {
-    frame *f = malloc(sizeof(frame));
+    frame *f = (frame *)malloc(sizeof(frame));
     if (f == NULL)
         return NULL;
 
@@ -141,7 +141,6 @@ error frame_resize(frame *this_frame, uint32_t width, uint32_t height)
         layer *l = this_frame->layers[i];
         if (l->redraw != layer_hidden)
             l->redraw = layer_needs_rendering;
-        // l->draw(l);
     }
     this_frame->needs_redraw = true;
 
@@ -172,6 +171,7 @@ memory_error:
 #if defined(DEBUG)
     printf("frame_add_layer: memory allocation failed.\n");
 #endif // DEBUG
+    return NULL;
 }
 
 error frame_draw(frame *f)
@@ -188,9 +188,9 @@ error frame_draw(frame *f)
     for (uint32_t i = 0; i < f->layer_count; i++)
     {
         layer *l = f->layers[i];
+        if (l->redraw == layer_hidden)
+            continue;
         l->draw(l);
-
-        printf("layer %d rendering to frame\r\n", i);
 
         for (uint32_t y = 0; y < l->position.height; y++) // FIXME: should not exceed frame->height
         {
@@ -218,7 +218,6 @@ error frame_draw(frame *f)
                 *frame_pixel = image_argb((uint8_t)(alpha_composite * 255.0), red_composite, green_composite, blue_composite);
             }
         }
-        printf("layer %d drawn\r\n", i);
     }
 #ifdef MINIFB_IMPLEMENTATION
 
