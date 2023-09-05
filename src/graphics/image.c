@@ -17,7 +17,6 @@ TODO:
 #include "bmp.h"
 #include "png.h"
 #include "image.h"
-#include "array2d.h"
 
 typedef image *(*_image_read_function)(const char *filename);
 typedef void (*_image_write_function)(image *img, const char *filename);
@@ -120,7 +119,7 @@ void image_write(image *img, const char *filename)
 // to do this without phase offsets, we need to reverse pixel order and do a second pass
 image *image_resize(image *img, uint32_t height, uint32_t width)
 {
-    image *new_img;
+    image *new_img; // FIXME: potential memory leak, old image is not freed
 
     if image_invalid (img)
         return NULL;
@@ -128,9 +127,6 @@ image *image_resize(image *img, uint32_t height, uint32_t width)
     new_img = image_init(height, width);
     if image_invalid (new_img)
         return NULL;
-
-    // float x_ratio = (float)img->width / (float)width;
-    // float y_ratio = (float)img->height / (float)height;
 
     // for now, hack scaling to deal with filtering phase offset
     float x_ratio = ((float)img->width - 1) / (float)width;
@@ -148,22 +144,20 @@ image *image_resize(image *img, uint32_t height, uint32_t width)
             image_pixel x1y0 = img->pixel_data[(uint32_t)interp_y * img->width + (uint32_t)interp_x + 1];
             image_pixel x0y1 = img->pixel_data[(uint32_t)interp_y * img->width + (uint32_t)interp_x + img->width];
             image_pixel x1y1 = img->pixel_data[(uint32_t)interp_y * img->width + (uint32_t)interp_x + img->width + 1];
-
             image_pixel interp_x0y0_x1y0 = image_pixel_interpolate(x0y0, x1y0, interp_x - (uint32_t)interp_x);
             image_pixel interp_x0y1_x1y1 = image_pixel_interpolate(x0y1, x1y1, interp_x - (uint32_t)interp_x);
-
             image_pixel interpolated_pixel = image_pixel_interpolate(interp_x0y0_x1y0, interp_x0y1_x1y1, interp_y - (uint32_t)interp_y);
 
             new_img->pixel_data[row * width + col] = interpolated_pixel;
-            // find the 4 nearest pixels in img
-            // calculate the weighted average of the 4 pixels
-            // set the pixel in new_img to the weighted average
         }
     }
 
     return new_img;
 
 malloc_error:
+#if defined(DEBUG)
+    printf("image_resize: memory error\r\n");
+#endif // DEBUG
     free(new_img);
     return NULL;
 }
@@ -219,6 +213,11 @@ void image_fprintf(FILE *f, const char *format, image *img, uint32_t left_start,
 
 void image_free(image *img)
 {
-    free_2d((void **)img->pixel_data, img->height);
+    if (img == NULL)
+        return;
+
+    if (img->pixel_data != NULL)
+        free(img->pixel_data);
+
     free(img);
 }
