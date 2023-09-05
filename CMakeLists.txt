@@ -112,6 +112,10 @@ add_test(NAME IMAGE_NO_FILE COMMAND ./image_test)
 set_tests_properties(IMAGE_NO_FILE PROPERTIES PASS_REGULAR_EXPRESSION "No file specified")
 add_test(NAME IMAGE_LENA COMMAND ./image_test ../test/graphics/lena.bmp)
 
+# graphics/plot
+add_executable(plot_test test/graphics/plot_test.c)
+target_link_libraries(plot_test PRIVATE breakdown)
+
 # data/list
 add_executable(list_test test/data/list_test.c)
 target_link_libraries(list_test PRIVATE breakdown)
