@@ -50,6 +50,44 @@ void gui_draw_line(gui_element *this_element)
     }
 }
 
+void gui_draw_polyline(gui_element *this_element)
+{
+    int32_t x1, y1, x2, y2;
+
+    for (uint32_t i = 0; i < this_element->data->num_points - 1; i++)
+    {
+        x1 = this_element->data->position[i].x;
+        y1 = this_element->data->position[i].y;
+        x2 = this_element->data->position[i + 1].x;
+        y2 = this_element->data->position[i + 1].y;
+
+        // Bresenham's line algorithm
+        int32_t dx = abs(x2 - x1);
+        int32_t dy = abs(y2 - y1);
+        int32_t sx = (x1 < x2) ? 1 : -1;
+        int32_t sy = (y1 < y2) ? 1 : -1;
+        int32_t err = dx - dy;
+        for (;;)
+        {
+            // FIXME: this will wrap around if the line is longer than the render
+            *(this_element->parent->render->pixel_data + ((y1)*this_element->parent->render->width) + (x1)) = this_element->data->colour;
+            if ((x1 == x2) && (y1 == y2))
+                break;
+            int32_t e2 = 2 * err;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                x1 += sx;
+            }
+            if (e2 < dx)
+            {
+                err += dx;
+                y1 += sy;
+            }
+        }
+    }
+}
+
 void gui_draw_rectangle(gui_element *this_element)
 {
     int32_t x1 = this_element->data->position->x;
@@ -160,9 +198,9 @@ gui_element *gui_element_init(layer *parent, gui_element_type type, coordinates 
     case gui_line:
         this_element->draw = gui_draw_line;
         break;
-    // case gui_polyline:
-    //     this_element->draw = gui_polyline_draw;
-    //     break;
+    case gui_polyline:
+        this_element->draw = gui_draw_polyline;
+        break;
     // case gui_polygon:
     //     this_element->draw = ui_polygon_draw;
     //     break;

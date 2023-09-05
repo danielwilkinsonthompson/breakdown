@@ -14,7 +14,6 @@ daniel@wilkinson-thompson.com
 
 static void layer_clear(layer *this_layer);
 
-// FIXME: this should be called by frame_add_layer, not the other way around
 layer *layer_init(frame *parent)
 {
     layer *this_layer = malloc(sizeof(layer));
@@ -33,7 +32,6 @@ layer *layer_init(frame *parent)
     this_layer->position.height = parent->height;
     this_layer->draw = layer_draw;
     this_layer->redraw = layer_needs_rendering;
-    // frame_add_layer(this_layer->parent, this_layer);
 
     return this_layer;
 
@@ -89,15 +87,13 @@ void layer_remove_gui_element(gui_element *this_element)
 
 void layer_draw(layer *this_layer)
 {
-#if defined(DEBUG)
-    printf("layer_draw: drawing layer @ %p\r\n", this_layer);
-#endif // DEBUG
     if (this_layer->redraw == layer_hidden)
         return;
     else
     {
         if (this_layer->render != NULL)
             image_free(this_layer->render);
+
         this_layer->render = image_init(this_layer->parent->height, this_layer->parent->width);
         if (this_layer->render == NULL)
             goto memory_error;
@@ -119,9 +115,6 @@ memory_error:
 
 void layer_free(layer *this_layer)
 {
-#if defined(DEBUG)
-    printf("layer_free: freeing layer @ %p\r\n", this_layer);
-#endif // DEBUG
     for (uint32_t el = 0; el < this_layer->no_elements; el++)
         gui_element_free(this_layer->gui_elements[el]);
 
