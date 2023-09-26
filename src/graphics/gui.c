@@ -88,6 +88,40 @@ void gui_draw_polyline(gui_element *this_element)
     }
 }
 
+void gui_draw_curve(gui_element *this_element)
+{
+    // https://pomax.github.io/bezierinfo/
+    // draw two lines between the three points
+    // do a linear interpolation between the two lines
+    // draw a line between the two interpolated points
+    // repeat until the interpolated points are within 1 pixel of each other
+    float t;
+    int32_t x1, y1, x2, y2, x3, y3;
+    int32_t x4, y4, x5, y5;
+
+    x1 = this_element->data->position[0].x;
+    y1 = this_element->data->position[0].y;
+    x2 = this_element->data->position[1].x;
+    y2 = this_element->data->position[1].y;
+    x3 = this_element->data->position[2].x;
+    y3 = this_element->data->position[2].y;
+
+    int32_t dx1 = abs(x2 - x1);
+    int32_t dy1 = abs(y2 - y1);
+
+    uint32_t pts = (dx1 > dy1) ? dx1 : dy1;
+    for (uint32_t pt = 0; pt < pts; pt++)
+    {
+        t = (float)pt / (float)pts;
+        x4 = (1 - t) * x1 + t * x2;
+        y4 = (1 - t) * y1 + t * y2;
+        x5 = (1 - t) * x2 + t * x3;
+        y5 = (1 - t) * y2 + t * y3;
+
+        // can we somehow leverage polyline?
+    }
+}
+
 void gui_draw_rectangle(gui_element *this_element)
 {
     int32_t x1 = this_element->data->position->x;
@@ -106,6 +140,14 @@ void gui_draw_rectangle(gui_element *this_element)
     {
         *(this_element->parent->render->pixel_data + ((y)*this_element->parent->render->width) + (x1)) = this_element->data->colour;
         *(this_element->parent->render->pixel_data + ((y)*this_element->parent->render->width) + (x2)) = this_element->data->colour;
+    }
+
+    if (image_a(this_element->data->fill) != 0)
+    {
+        // set all pixels within rectangle to fill colour
+        for (uint32_t y = y1 + 1; y < y2; y++)
+            for (uint32_t x = x1 + 1; x < x2; x++)
+                *(this_element->parent->render->pixel_data + ((y)*this_element->parent->render->width) + (x)) = this_element->data->fill;
     }
 }
 
@@ -204,6 +246,9 @@ gui_element *gui_element_init(layer *parent, gui_element_type type, coordinates 
     // case gui_polygon:
     //     this_element->draw = ui_polygon_draw;
     //     break;
+    case gui_curve:
+        this_element->draw = gui_draw_curve;
+        break;
     // case gui_sprite:
     //     this_element->draw = ui_sprite_draw;
     //     break;
@@ -271,7 +316,9 @@ gui_element *gui_element_init(layer *parent, gui_element_type type, coordinates 
     //     this_element->draw = ui_unspecified_draw;
     //     break;
     default:
+#if defined(DEBUG)
         printf("gui_element_init: unknown gui element type.\n");
+#endif // DEBUG
         break;
     }
 
@@ -280,8 +327,10 @@ gui_element *gui_element_init(layer *parent, gui_element_type type, coordinates 
     return this_element;
 memory_error:
     gui_element_free(this_element);
-    printf("gui_element_init: memory allocation failed.\n");
 
+#if defined(DEBUG)
+    printf("gui_element_init: memory allocation failed.\n");
+#endif // DEBUG
     return NULL;
 }
 

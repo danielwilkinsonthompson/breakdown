@@ -59,6 +59,7 @@ set(breakdown_src
     src/file/csv.c
     src/file/gz.c
     src/file/png.c
+    src/file/svg.c
     src/graphics/draw.c
     src/graphics/image.c
     src/graphics/frame.c

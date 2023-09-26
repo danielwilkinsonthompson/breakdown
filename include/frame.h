@@ -7,7 +7,6 @@ frame compositor
 daniel@wilkinson-thompson.com
 
 references:
- - https://github.com/danielwilkinsonthompson/breakdown
  - https://github.com/emoon/minifb
 -----------------------------------------------------------------------------*/
 #ifndef __frame_h
@@ -18,7 +17,6 @@ references:
 #include "error.h"
 
 typedef struct layer_t layer;
-// typedef void (*_layer_draw_callback)(layer *l);
 typedef struct window_t window;
 
 typedef struct frame_t

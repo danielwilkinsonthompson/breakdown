@@ -40,11 +40,11 @@ void key_pressed(struct mfb_window *window, mfb_key key, mfb_key_mod mod, bool i
         mfb_close(window);
 }
 
-void resize_window(struct mfb_window *window, int width, int height)
-{
-    needs_resizing = true;
-    needs_redrawing = true;
-}
+// void resize_window(struct mfb_window *window, int width, int height)
+// {
+//     needs_resizing = true;
+//     needs_redrawing = true;
+// }
 
 int main(int argc, char *argv[])
 {
@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
 
     mfb_set_mouse_button_callback(f->window, mouse_button);
     mfb_set_keyboard_callback(f->window, key_pressed);
-    mfb_set_resize_callback(f->window, resize_window);
+    // mfb_set_resize_callback(f->window, resize_window);
 
     while (status == success)
     {
@@ -134,7 +134,7 @@ int main(int argc, char *argv[])
             if (mfb_update_events(f->window) != STATE_OK)
                 status = io_error;
         }
-        frame_msleep(100);
+        frame_msleep(10);
     };
 
     return EXIT_SUCCESS;
