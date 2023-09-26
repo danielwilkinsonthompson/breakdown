@@ -12,28 +12,28 @@ daniel@wilkinson-thompson.com
 
 typedef struct plot_trace_t
 {
-    int32_t *x;
-    int32_t *y;
-    int32_t length;
-    const char *label;
-    uint32_t colour;
+  int32_t *x;
+  int32_t *y;
+  int32_t length;
+  const char *label;
+  uint32_t colour;
 } plot_trace;
 
 typedef struct axis_t
 {
-    int32_t min;
-    int32_t max;
-    const char *label;
+  int32_t min;
+  int32_t max;
+  const char *label;
 } axis;
 
 typedef struct plot_t
 {
-    plot_trace *trace;
-    int32_t trace_count;
-    axis x_axis;
-    axis y_axis;
-    const char *title;
-    frame *window;
+  plot_trace *trace;
+  int32_t trace_count;
+  axis x_axis;
+  axis y_axis;
+  const char *title;
+  frame *window;
 } plot;
 
 /*----------------------------------------------------------------------------
@@ -52,7 +52,7 @@ void plot_redraw(plot *plt);
   add_trace
     adds a trace to the plot
 -----------------------------------------------------------------------------*/
-void plot_add_trace(plot *plt, int32_t *x, int32_t *y, int32_t length, const char *label, uint32_t colour);
+plot_trace *plot_add_trace(plot *plt, int32_t *x, int32_t *y, int32_t length, const char *label, uint32_t colour);
 
 /*----------------------------------------------------------------------------
   plot_show

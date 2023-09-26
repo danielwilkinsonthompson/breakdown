@@ -39,26 +39,29 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  printf("Initialising plot\r\n");
+  printf("initialising plot\r\n");
   plt = plot_init("Basic plot", "Time", "Distance");
 
-  plot_add_trace(plt, (int32_t[]){0, 1, 2, 3, 4, 5}, (int32_t[]){2, 3, 4, 5, 6, 7}, 6, "Turtle Position", image_argb(255, 128, 100, 100));
+  plot_trace *trace = plot_add_trace(plt, (int32_t[]){0, 50, 100, 150, 200, 250, 300}, (int32_t[]){100, 200, 100, 200, 100, 200, 100}, 7, "Turtle Position", image_argb(255, 128, 100, 100));
+
+  printf("Showing plot_trace @ %p\r\n", trace);
+  plot_show(plt);
 
   while (status == success)
   {
     if (plt->window->needs_redraw == true)
     {
+      printf("-");
       status = frame_draw(plt->window);
 
       if (status != success)
         return EXIT_FAILURE;
     }
-    else
-    {
-      if (mfb_update_events(plt->window->window) != STATE_OK)
-        status = io_error;
-    }
-    frame_msleep(100);
+    printf(".");
+    if (mfb_update_events(plt->window->window) != STATE_OK)
+      status = io_error;
+
+    frame_msleep(10);
   };
 
   return EXIT_SUCCESS;

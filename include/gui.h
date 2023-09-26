@@ -28,6 +28,7 @@ typedef enum gui_element_type_t
   // gui_ellipse,
   gui_polyline,
   // gui_polygon,
+  gui_curve,
   // gui_sprite,
   // gui_textbox,
   // gui_button,
@@ -60,6 +61,7 @@ typedef struct coordinates_t
   uint32_t z; // should z index be included?
   uint32_t width;
   uint32_t height;
+  uint32_t angle; // should this be a float?
 } coordinates;
 
 typedef struct gui_element_data_t

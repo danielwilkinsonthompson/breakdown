@@ -55,6 +55,23 @@ typedef struct mfb_window window_t;
 #include <windows.h>
 #endif
 
+#if defined(MINIFB_IMPLEMENTATION)
+// FIXME: need to figure out how to handle minifb events
+void resize_window(struct mfb_window *window, int width, int height)
+{
+    frame *this_frame = (frame *)mfb_get_user_data(window);
+
+    if (frame_resize(this_frame, width, height) != success)
+    {
+        printf("Error: could not resize frame\r\n");
+        mfb_close(window);
+
+        free(this_frame->buffer);
+        free(this_frame);
+    }
+}
+#endif // MINIFB_IMPLEMENTATION
+
 static void _get_draw_order(frame *this_frame)
 {
     for (uint32_t i = 0; i < this_frame->layer_count; i++)
@@ -106,6 +123,7 @@ frame *frame_init_with_options(uint32_t width, uint32_t height, const char *titl
     if (resizable == true)
     {
         flags |= WF_RESIZABLE;
+        // printf("frame_init_with_options: registering resize callback as resize_window @ %p \r\n", resize_window);
     }
     if (fullscreen == true)
     {
@@ -118,6 +136,8 @@ frame *frame_init_with_options(uint32_t width, uint32_t height, const char *titl
         free(f);
         return NULL;
     }
+    mfb_set_resize_callback(f->window, resize_window);
+    mfb_set_user_data(f->window, f);
 #endif
     f->needs_redraw = false;
 
@@ -126,9 +146,15 @@ frame *frame_init_with_options(uint32_t width, uint32_t height, const char *titl
 
 error frame_resize(frame *this_frame, uint32_t width, uint32_t height)
 {
+    // FIXME: exploring whether resizing is better at the OS level
+    return success;
+
     this_frame->width = width * this_frame->scaling;
     this_frame->height = height * this_frame->scaling;
-    this_frame->buffer = (uint32_t *)realloc(this_frame->buffer, this_frame->width * this_frame->height * sizeof(uint32_t));
+    // no advantage to realloc?
+    // this_frame->buffer = (uint32_t *)realloc(this_frame->buffer, this_frame->width * this_frame->height * sizeof(uint32_t));
+    free(this_frame->buffer);
+    this_frame->buffer = (uint32_t *)calloc(this_frame->width * this_frame->height, sizeof(uint32_t));
     if (this_frame->buffer == NULL)
         return memory_error;
 
@@ -143,6 +169,8 @@ error frame_resize(frame *this_frame, uint32_t width, uint32_t height)
             l->redraw = layer_needs_rendering;
     }
     this_frame->needs_redraw = true;
+
+    frame_draw(this_frame);
 
     return success;
 }
@@ -219,6 +247,8 @@ error frame_draw(frame *f)
             }
         }
     }
+
+    f->needs_redraw = false;
 #ifdef MINIFB_IMPLEMENTATION
 
     mfb_update_state state = mfb_update_ex(f->window, f->buffer, f->width, f->height);
@@ -235,6 +265,7 @@ error frame_draw(frame *f)
         status = success;
     }
 #endif
+
     return status;
 }
 
