@@ -167,17 +167,20 @@ static node *_init_node(void);
 // static void _print_node(node *n);
 static void _free_node(node *n);
 
-error deflate(stream *uncompressed, stream *compressed)
+error deflate(stream *uncompressed, stream *compressed, uint8_t compression_level)
 {
   if (compressed == NULL || uncompressed == NULL)
     return null_pointer_error;
 
-  block_header header;
+  block_header *header = (block_header *)malloc(sizeof(block_header));
+  if (header == NULL)
+    goto memory_error;
+
+  header->reserved = 0;
 
   // Recommended flow for deflate()
   // Capture a manageable block of input data (e.g. 100kB)
   // - Note that the distance codes are limited to 32kB, so perhaps limit the block size to 32kB
-  // Append EOB marker to block
   // Apply LZSS to compress repeated symbols
   // Construct dynamically-generated Huffman trees for literal/length and distance codes
   // - All codes must be used by symbols in the tree, even if they are not used in the block (Kraft-McMillan inequality)
@@ -188,34 +191,52 @@ error deflate(stream *uncompressed, stream *compressed)
 
   // TODO: Need an algorithm to determine the appropriate block type
   // TODO: Need an algorithm to break up the uncompressed stream into blocks
-  header.final = 1;
-  header.block_type = block_type_uncompressed;
-  header.reserved = 0;
 
-  // write block header
-  size_t bits_written = stream_write_bits(compressed, (uint8_t *)&header, 8, false);
-  if (bits_written != sizeof(block_header) * 8)
-    goto io_error;
+  if (compression_level == 0)
+  { // Uncompressed blocks
+    header->block_type = block_type_uncompressed;
 
-  uncompressed_block_header uncompressed_header;
-  uncompressed_header.length = uncompressed->length / 8;
-  uncompressed_header.not_length = ~(uncompressed->length / 8);
+    if (uncompressed->length / 8 < 32768) // FIXME: magic number
+      header->final = 1;
+    else
+      header->final = 0;
 
-  bits_written = stream_write_bits(compressed, (uint8_t *)&uncompressed_header.length, sizeof(uncompressed_block_header) * 8, false);
-  if (bits_written != sizeof(uncompressed_block_header) * 8)
-    goto io_error;
+    // write block header to compressed stream
+    size_t bits_written = stream_write_bits(compressed, (uint8_t *)header, 8, false);
+    if (bits_written != sizeof(block_header) * 8)
+      goto io_error;
 
-  // write uncompressed data
-  bits_written = stream_write_bits(compressed, uncompressed->head.byte, uncompressed->length, false);
-  if (bits_written != uncompressed->length)
-    goto io_error;
+    uncompressed_block_header uncompressed_header;
+    uncompressed_header.length = uncompressed->length / 8;
+    uncompressed_header.not_length = ~(uncompressed->length / 8);
 
-  return success;
+    bits_written = stream_write_bits(compressed, (uint8_t *)&uncompressed_header.length, sizeof(uncompressed_block_header) * 8, false);
+    if (bits_written != sizeof(uncompressed_block_header) * 8)
+      goto io_error;
+
+    // write uncompressed data
+    bits_written = stream_write_bits(compressed, uncompressed->head.byte, uncompressed->length, false);
+    if (bits_written != uncompressed->length)
+      goto io_error;
+
+    // EOB marker not applicable to uncompressed blocks
+
+    return success;
+  }
+
+  // If you make it here, you want to do compression
+  // Start with static tree
+
+  buffer *lzss_pairs = buffer_init(max_lzss_pairs_per_block * sizeof(lzss));
+
 
 io_error:
-  printf("deflate.c - deflate() : io_error\r\n");
-
+  printf("deflate.deflate(): io_error\r\n");
   return io_error;
+
+memory_error:
+  printf("deflate.deflate(): memory error\r\n");
+  return memory_error;
 }
 
 error inflate(stream *compressed, stream *decompressed)

@@ -310,7 +310,7 @@ void gz_write(const char *filename, buffer *buf)
     goto memory_error;
   }
   printf("got here: %zu\n", uncompressed->length);
-  deflate(uncompressed, compressed);
+  deflate(uncompressed, compressed, 0);
   fwrite(compressed->data, sizeof(uint8_t), compressed->length / 8, zip->file);
 
   // write the footer to file
