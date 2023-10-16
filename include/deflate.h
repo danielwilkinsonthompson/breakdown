@@ -22,7 +22,7 @@ references
   compressed    :  compressed data
   returns       :  success (0) or error code (see error.h)
 -----------------------------------------------------------------------------*/
-error deflate(stream *uncompressed, stream *compressed);
+error deflate(stream *uncompressed, stream *compressed, uint8_t compression_level);
 
 /*----------------------------------------------------------------------------
   inflate
