@@ -44,6 +44,7 @@ set(breakdown_src
     include/rle.h
     include/stream.h
     include/vector.h
+    include/zip.h
     include/zlib.h
     src/analysis/vector.c
     src/compression/deflate.c
@@ -60,6 +61,7 @@ set(breakdown_src
     src/file/gz.c
     src/file/png.c
     src/file/svg.c
+    src/file/zip.c
     src/graphics/draw.c
     src/graphics/image.c
     src/graphics/frame.c
@@ -128,6 +130,10 @@ target_link_libraries(png_test PRIVATE breakdown)
 # compression/rle
 add_executable(rle_test test/compression/rle_test.c)
 target_link_libraries(rle_test PRIVATE breakdown)
+
+# compression/zip
+add_executable(zip_test test/compression/zip_test.c)
+target_link_libraries(zip_test PRIVATE breakdown)
 
 # analysis/vector
 add_executable(vector_test test/analysis/vector_test.c)
