@@ -17,6 +17,14 @@ references:
 
 typedef struct zip_t zip;
 
+/*
+  What do we need to do?
+  - Read: opens a zip archive 
+  - Write: 
+
+*/
+
+
 /*----------------------------------------------------------------------------
   open
   open zip archive; if file does not exist, create it
@@ -37,5 +45,11 @@ zip *zip_open(const char *path);
   list all files in zip archive (array of strings)
 -----------------------------------------------------------------------------*/
 const char **zip_list(zip *zip);
+
+/*----------------------------------------------------------------------------
+  defrag
+  defragment zip archive
+-----------------------------------------------------------------------------*/
+void zip_defrag(zip *zip);
 
 #endif // __zip_h
