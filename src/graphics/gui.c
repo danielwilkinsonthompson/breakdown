@@ -90,35 +90,45 @@ void gui_draw_polyline(gui_element *this_element)
 
 void gui_draw_curve(gui_element *this_element)
 {
-    // https://pomax.github.io/bezierinfo/
-    // draw two lines between the three points
-    // do a linear interpolation between the two lines
-    // draw a line between the two interpolated points
-    // repeat until the interpolated points are within 1 pixel of each other
-    float t;
+    float t, u;
     int32_t x1, y1, x2, y2, x3, y3;
-    int32_t x4, y4, x5, y5;
+    int32_t max_x, min_x, max_y, min_y;
+    int32_t dx, dy;
 
     x1 = this_element->data->position[0].x;
     y1 = this_element->data->position[0].y;
+
     x2 = this_element->data->position[1].x;
     y2 = this_element->data->position[1].y;
+
     x3 = this_element->data->position[2].x;
     y3 = this_element->data->position[2].y;
 
-    int32_t dx1 = abs(x2 - x1);
-    int32_t dy1 = abs(y2 - y1);
+    max_x = (x2 > x1) ? x2 : x1;
+    max_x = (x3 > max_x) ? x3 : max_x;
+    min_x = (x2 < x1) ? x2 : x1;
+    min_x = (x3 < min_x) ? x3 : min_x;
+    
+    max_y = (y2 > y1) ? y2 : y1;
+    max_y = (y3 > max_y) ? y3 : max_y;
+    min_y = (y2 < y1) ? y2 : y1;
+    min_y = (y3 < min_y) ? y3 : min_y;
+    
+    dx = abs(max_x - min_x);
+    dy = abs(max_y - min_y);
 
-    uint32_t pts = (dx1 > dy1) ? dx1 : dy1;
+    uint32_t pts = (dx > dy ) ? dx  : dy;
+
     for (uint32_t pt = 0; pt < pts; pt++)
     {
-        t = (float)pt / (float)pts;
-        x4 = (1 - t) * x1 + t * x2;
-        y4 = (1 - t) * y1 + t * y2;
-        x5 = (1 - t) * x2 + t * x3;
-        y5 = (1 - t) * y2 + t * y3;
+        int32_t x, y;
 
-        // can we somehow leverage polyline?
+        t = (float)pt / (float)pts;
+        u = 1 - t;
+        x = u * u * x1 + 2 * u * t * x2 + t * t * x3;
+        y = u * u * y1 + 2 * u * t * y2 + t * t * y3;
+
+        *(this_element->parent->render->pixel_data + ((y)*this_element->parent->render->width) + (x)) = this_element->data->colour;
     }
 }
 

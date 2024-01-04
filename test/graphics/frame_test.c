@@ -87,6 +87,7 @@ int main(int argc, char *argv[])
     draw_rectangle(l1, 100, 100, 400, 400, image_argb(255, 0, 0, 255));
     draw_line(l1, 200, 200, 300, 300, image_argb(255, 255, 255, 255));
     draw_polyline(l1, (int32_t[]){200, 300, 300, 200}, (int32_t[]){200, 200, 300, 300}, 4, image_argb(255, 255, 255, 255));
+    draw_curve(l1, (int32_t[]){0, 100, 200}, (int32_t[]){0, 100, 0}, image_argb(255, 255, 255, 255));
 
     draw_pixel(l1, 200, 200, image_argb(255, 255, 0, 0));
     draw_pixel(l1, 200, 201, image_argb(255, 255, 0, 0));
@@ -131,11 +132,12 @@ int main(int argc, char *argv[])
         }
         else
         {
-            if (mfb_update_events(f->window) != STATE_OK)
-                status = io_error;
+            do
+            {
+                if (mfb_update_events(f->window) != STATE_OK)
+                    status = io_error;
+            } while (mfb_wait_sync(f->window));
         }
-        frame_msleep(10);
-    };
-
+    }
     return EXIT_SUCCESS;
 }
